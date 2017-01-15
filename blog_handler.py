@@ -9,6 +9,7 @@ import re
 import jinja2
 import webapp2
 from google.appengine.ext import db
+import cookie_validator
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
@@ -16,6 +17,9 @@ JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
                                autoescape=True)
 MAIN_PAGE = "blog.html"
 NEW_POST = "newpost.html"
+NEW_POST_DISPLAY = "new_post_display.html"
+SIGNUP_TEMPLATE = "login_template.html"
+WELCOME_TEMPLATE = "welcome.html"
 
 # Add regex for form input verification
 INPUTS = {"subject" : "^.{1,100}$",
@@ -41,23 +45,43 @@ class BlogPost(db.Model):
     post_title = db.StringProperty(required = True)
     post_body = db.TextProperty(required = True)
     post_time = db.DateTimeProperty(auto_now_add=True)
+    
+class User(db.Model):
+    name = db.StringProperty(required = True)
+    password = db.StringProperty(required = True)
         
-class Blog(Handler):
-    pass
+class BlogMainPage(Handler):
+    def get(self):
+        all_posts = BlogPost.all()
+        all_posts.order('post_time')
+        self.render(MAIN_PAGE, blog_posts = all_posts)
 
 class NewPost(Handler):
     
     def get(self):
+        '''
+        Renders the new post form on an initial request.
+        '''
         self.render(NEW_POST)
         
     def post(self):
+        '''
+        Takes input from the new post form, validates the input, and 
+        adds a new entity to the database, storing the information from
+        the new blog post.
+        '''
         self.valid_input = True
         raw_inputs = self.get_form_inputs()
         to_render = self.verify_inputs(raw_inputs)
         if not self.valid_input:
             self.render(NEW_POST, **to_render)
         else:
-            self.write("Thanks!")
+            new_blog_post = BlogPost(post_title = to_render.get("subject"),
+                                     post_body = to_render.get("content"))
+            new_db_entry = new_blog_post.put()
+            new_db_entry_id = new_db_entry.id()
+            
+            self.redirect('/blog/post_id/' + str(new_db_entry_id))
         
     def get_form_inputs(self):
         '''
@@ -94,8 +118,103 @@ class NewPost(Handler):
         pattern = re.compile(INPUTS[regex_key])
         return pattern.match(input)
         
-
+class NewPostDisplay(Handler):
+    def get(self, blog_post_id):
+        current_blog_post = BlogPost.get_by_id(long(blog_post_id))
+        current_title = current_blog_post.post_title
+        current_body = current_blog_post.post_body
+        self.render(NEW_POST_DISPLAY, title=current_title, 
+                    content=current_body)
         
-app = webapp2.WSGIApplication([('/blog', Blog),
-                               ('/newpost', NewPost)],
-                              debug=True)
+class Signup(Handler):
+    def __init__(self, request, response):
+        self.initialize(request, response)
+        self.INPUT_MAP = {"username" : r"^[a-zA-Z0-9_-]{3,20}$",
+                          "password" : r"^.{3,20}$",
+                          "verify" : r"^.{3,20}$",
+                          "email" : r"^[\S]+@[\S]+.[\S]+$"
+                          }
+
+    def get(self):
+        self.render(SIGNUP_TEMPLATE)
+        
+    def post(self):
+        self.valid_input = True
+        self.output_map = dict()
+        input_map = self.get_inputs(self.INPUT_MAP.iterkeys())
+        self.validate_form_data(input_map, self.output_map)
+        self.passwords_match(input_map, self.output_map)
+        to_render = self.output_map
+        
+        if not self.valid_input:
+            self.render(SIGNUP_TEMPLATE, **to_render)
+        else:
+            self.set_cookie("name", to_render.get("username"))
+            self.set_cookie("password", to_render.get("password"))
+            self.redirect("/blog/welcome")
+    
+    def set_cookie(self, cookie_name, cookie_value):
+        self.response.headers.add_header(
+            "Set-Cookie", cookie_validator.format_cookie(cookie_name, 
+                                                        cookie_value))
+    
+    def is_valid(self, data, re_input_key):
+        '''
+        If returns true if the data is valid, false otherwise.
+        '''
+        pattern = re.compile(self.INPUT_MAP[re_input_key])
+        return pattern.match(data)
+    
+    def get_inputs(self, input_list):
+        '''
+        Gets the data entered in the text and password inputs. Stores the input
+        in a dictionary.
+        INPUT_MAP key : string value entered.
+        '''
+        output_map = dict()
+        for input in input_list:
+            output_map[input] = self.request.get(input)
+        return output_map
+    
+    def validate_form_data(self, input_map, output_map):
+        '''
+        Checks each input form element to make sure it matches the specified
+        requirements and updates the appropriate form output. If the input
+        is not correct, generates an error message.
+        '''
+        for key in input_map:
+            if not self.is_valid(input_map[key], key):
+                if key == "email" and input_map[key] == "":
+                    continue
+                self.valid_input = False
+                output_map[key + "_error"] = self.generate_invalid_response(key)
+                output_map[key] = ""
+            else:
+                output_map[key] = input_map[key]
+                
+    def passwords_match(self, input_map, output_map):
+        '''
+        Check whether input password and verify fields match.
+        '''
+        if not input_map["password"] == input_map["verify"]:
+            output_map["password_error"] = "Passwords don't match"
+            self.valid_input = False
+        
+    def generate_invalid_response(self, input_type):
+        response = "That's not a valid {type}."
+        return response.format(type = input_type)
+    
+class Welcome(Handler):
+    def get(self):
+        name_cookie = self.request.cookies.get("name")
+        if name_cookie:
+            if cookie_validator.validate_hash(name_cookie):
+                username = cookie_validator.get_value(name_cookie)
+                self.render(WELCOME_TEMPLATE, username = username)  
+        
+app = webapp2.WSGIApplication([('/blog', BlogMainPage),
+                               ('/blog/newpost', NewPost),
+                               (r'/blog/post_id/(\d+)', NewPostDisplay),
+                               ('/blog/signup', Signup),
+                               ('/blog/welcome', Welcome)], debug=True)
+
