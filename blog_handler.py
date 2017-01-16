@@ -173,12 +173,14 @@ class Welcome(Handler):
     def get(self):
         cookie_helper = CookieUtil(self)
         name_cookie = self.request.cookies.get("name")
-        if name_cookie:
+        if name_cookie and (len(cookie_helper.get_value(name_cookie)) > 1):
             if (cookie_helper.validate_hash(name_cookie)):
                 username = cookie_helper.get_value(name_cookie)
                 self.render(WELCOME_TEMPLATE, username = username)
             else:
                 self.redirect("/blog/login")
+        else:
+            self.redirect("/blog/signup")
                 
 class Login(Handler):
     # add check to make sure user is in database
@@ -212,6 +214,13 @@ class Login(Handler):
             else:
                 to_render["username_error"] = "That user does not exist."
                 self.render(LOGIN_TEMPLATE, **to_render)
+                
+class Logout(Handler):
+    def get(self):
+        cookie_helper = CookieUtil(self)
+        cookie_helper.set_cookie("name", "")
+        self.redirect("/blog/signup")
+    
         
 class FormInputHelper(object):
     '''
@@ -296,5 +305,6 @@ app = webapp2.WSGIApplication([("/blog", BlogMainPage),
                                (r"/blog/post_id/(\d+)", NewPostDisplay),
                                ("/blog/signup", Signup),
                                ("/blog/welcome", Welcome),
-                               ("/blog/login", Login)], debug=True)
+                               ("/blog/login", Login),
+                               ("/blog/logout", Logout)], debug=True)
 
