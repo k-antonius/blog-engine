@@ -51,7 +51,7 @@ class User(ndb.Model):
     name = ndb.StringProperty(required = True)
     password = ndb.StringProperty(required = True)
     email = ndb.StringProperty()
-    id = name
+
         
 class BlogMainPage(Handler):
     def get(self):
@@ -164,7 +164,8 @@ class Signup(Handler):
             cookie_helper.set_cookie("name", to_render.get("username"))
             pwd_helper = PwdUtil(to_render.get("password"))
             new_user = User(name = to_render.get("username"),
-                            password = pwd_helper.new_pwd_salt_pair())
+                            password = pwd_helper.new_pwd_salt_pair(),
+                            id = to_render.get("username"))
             new_user.put()
             self.redirect("/blog/welcome")
     
@@ -196,10 +197,21 @@ class Login(Handler):
         if not helper.valid_input:
             self.render(LOGIN_TEMPLATE, **to_render)
         else:
-
-            cookie_helper = CookieUtil(self)
-            cookie_helper.set_cookie("name", to_render.get("username"))
-            self.redirect("/blog/welcome")
+            current_user = User.get_by_id(to_render.get("username"))
+            if current_user:
+                current_user_pwd = current_user.password
+                pwd_helper = PwdUtil(to_render.get("password"),
+                                     current_user_pwd) 
+                if pwd_helper.verify_password():
+                    cookie_helper = CookieUtil(self)
+                    cookie_helper.set_cookie("name", to_render.get("username"))
+                    self.redirect("/blog/welcome")
+                else:
+                    to_render["password_error"] = "Incorrect password."
+                    self.render(LOGIN_TEMPLATE, **to_render)
+            else:
+                to_render["username_error"] = "That user does not exist."
+                self.render(LOGIN_TEMPLATE, **to_render)
         
 class FormInputHelper(object):
     '''
