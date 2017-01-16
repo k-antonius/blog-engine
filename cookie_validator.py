@@ -53,8 +53,11 @@ class CookieUtil(object):
         Convenience method that returns a formatted cookie.
         '''
         cookie_template = "{name}={value}; Path=/"
-        return cookie_template.format(name=name, value = 
-                                      self.value_and_hash(value))
+        if value == "":
+            new_value = value
+        else:
+            new_value = self.value_and_hash(value)
+        return cookie_template.format(name=name, value = new_value)
     
     def get_value(self, value_w_hash):
         '''
