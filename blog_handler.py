@@ -9,7 +9,7 @@ import re
 import jinja2
 import webapp2
 from google.appengine.ext import ndb
-import cookie_validator
+from cookie_validator import CookieUtil, PwdUtil
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
@@ -50,6 +50,7 @@ class BlogPost(ndb.Model):
 class User(ndb.Model):
     name = ndb.StringProperty(required = True)
     password = ndb.StringProperty(required = True)
+    email = ndb.StringProperty()
     id = name
         
 class BlogMainPage(Handler):
@@ -159,23 +160,24 @@ class Signup(Handler):
         if not helper.valid_input:
             self.render(SIGNUP_TEMPLATE, **to_render)
         else:
-            cookie_helper = cookie_validator.Validator(self)
+            cookie_helper = CookieUtil(self)
             cookie_helper.set_cookie("name", to_render.get("username"))
-            cookie_helper.set_cookie("password", to_render.get("password"))
+            pwd_helper = PwdUtil(to_render.get("password"))
+            new_user = User(name = to_render.get("username"),
+                            password = pwd_helper.new_pwd_salt_pair())
+            new_user.put()
             self.redirect("/blog/welcome")
     
 class Welcome(Handler):
     def get(self):
-        cookie_helper = cookie_validator.Validator(self)
+        cookie_helper = CookieUtil(self)
         name_cookie = self.request.cookies.get("name")
-        password_cookie = self.request.cookies.get("password")
-        if name_cookie and password_cookie:
-            if (cookie_helper.validate_hash(name_cookie) and 
-                                cookie_helper.validate_hash(password_cookie)):
+        if name_cookie:
+            if (cookie_helper.validate_hash(name_cookie)):
                 username = cookie_helper.get_value(name_cookie)
                 self.render(WELCOME_TEMPLATE, username = username)
-        else:
-            self.redirect("/blog/login")
+            else:
+                self.redirect("/blog/login")
                 
 class Login(Handler):
     # add check to make sure user is in database
@@ -194,9 +196,9 @@ class Login(Handler):
         if not helper.valid_input:
             self.render(LOGIN_TEMPLATE, **to_render)
         else:
-            cookie_helper = cookie_validator.Validator(self)
+
+            cookie_helper = CookieUtil(self)
             cookie_helper.set_cookie("name", to_render.get("username"))
-            cookie_helper.set_cookie("password", to_render.get("password"))
             self.redirect("/blog/welcome")
         
 class FormInputHelper(object):
@@ -276,8 +278,6 @@ class FormInputHelper(object):
         if not self.form_fields["password"] == self.form_fields["verify"]:
             self.output_map["password_error"] = "Passwords don't match"
             self.valid_input = False
-    
-          
         
 app = webapp2.WSGIApplication([("/blog", BlogMainPage),
                                ("/blog/newpost", NewPost),
