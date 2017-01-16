@@ -6,6 +6,8 @@ Created on Jan 14, 2017
 
 import hashlib
 import hmac
+import random
+import string
 
 KEY = "fatfriend"
 class Validator(object):
@@ -61,7 +63,74 @@ class Validator(object):
         slice_idx = value_w_hash.index("|")
         return value_w_hash[:slice_idx]
 
+class PasswordUtils(object):
+    '''
+    Class to create salted, hashed passwords for storing in database and for
+    checking whether an input password matches an already created password.
+    '''    
     
-
-
+    def __init__(self, clear_text, db_password = None):
+        '''
+        Takes clear_text and returns a hashed version of that text.
+        Takes an optional parameter db_password, which is the hashed password
+        and salt combination stored in the database. This option is ued when
+        verifying a password is correct.
+        '''
         
+        self.new_salt = None
+        self.existing_password = None
+        self.existing_salt = None
+        if db_password:
+            self._extract_pwd_salt(db_password)
+        self.hashed_text = self._hash_salt(clear_text)
+        
+    
+    def _hash_salt(self, clear_text):
+        '''
+        Helper method that hashes and salts a password. For new passwords,
+        it makes a new salt. For existing passwords, it uses the salt passed
+        in the constructor.
+        '''
+        hashed_output = None
+        if self.existing_password:
+            hashed_output = "".join(hashlib.sha256(clear_text + 
+                                               self.existing_salt).hexdigest())
+        else:
+            generator = random.SystemRandom()
+            SALT_LEN = 5
+            possible_chars = string.letters + string.digits
+            new_salt = "".join(generator.choice(possible_chars) 
+                               for dummy_idx in range(SALT_LEN))
+            hashed_output = "".join(hashlib.sha256(clear_text + 
+                                                   new_salt).hexdigest()) 
+            self.new_salt = new_salt
+        return hashed_output
+    
+    def verify_password(self):
+        '''
+        Compares existing password with the unknown password input into the 
+        constructor. Returns a boolean value. If this method is called but
+        no db_password was passed to the constructor, None will be returned. 
+        '''
+        if self.existing_password:
+            return self.existing_password == self.hashed_text
+        else:
+            return None
+    
+    def new_pwd_salt_pair(self):
+        '''
+        Convenience method that returns the hashed password/salt combination
+        for storing in the database.
+        '''
+        if self.new_salt:
+            return self.hashed_text + "," + self.new_salt
+        
+    def _extract_pwd_salt(self, pwd_and_salt):
+        '''
+        Convenience method that slices off the salt from the [password,salt]
+        pair stored in the database. Stores the resulting parts.
+        '''
+        slice_idx = pwd_and_salt.rfind(",")
+        self.existing_salt = pwd_and_salt[slice_idx + 1:]
+        self.existing_password = pwd_and_salt[:slice_idx]    
+    
