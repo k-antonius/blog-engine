@@ -22,10 +22,6 @@ SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
 
-# Add regex for form input verification
-INPUTS = {"subject" : "^.{1,100}$",
-          "content" : "^.{1,}$"}
-
 class Handler(webapp2.RequestHandler):
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
@@ -52,7 +48,6 @@ class User(ndb.Model):
     password = ndb.StringProperty(required = True)
     email = ndb.StringProperty()
 
-        
 class BlogMainPage(Handler):
     def get(self):
         all_posts = BlogPost.all()
@@ -73,10 +68,14 @@ class NewPost(Handler):
         adds a new entity to the database, storing the information from
         the new blog post.
         '''
-        self.valid_input = True
-        raw_inputs = self.get_form_inputs()
-        to_render = self.verify_inputs(raw_inputs)
-        if not self.valid_input:
+        INPUTS = {"subject" : "^.{1,100}$",
+          "content" : "^.{1,}$"}
+        errors = {"subject" : "You must have a subject of less than 100 char" +
+                  "s in length.",
+                  "content" : "Your post must have content."}
+        form_helper = FormInputHelper(INPUTS.iterkeys(), INPUTS, errors, self)
+        to_render = form_helper.process_form_inputs()
+        if not form_helper.valid_input:
             self.render(NEW_POST, **to_render)
         else:
             new_blog_post = BlogPost(post_title = to_render.get("subject"),
@@ -85,41 +84,6 @@ class NewPost(Handler):
             new_db_entry_id = new_db_entry.id()
             
             self.redirect('/blog/post_id/' + str(new_db_entry_id))
-        
-    def get_form_inputs(self):
-        '''
-        Helper function to retrieve input from html forms.
-        Gets the input fields specified in valid_inputs dictionary.
-        '''
-        raw_inputs = {}
-        for input in INPUTS:
-            raw_inputs[input] = self.request.get(input)
-        return raw_inputs
-    
-    def verify_inputs(self, raw_inputs):
-        '''
-        Takes the dictionary of raw form inputs and verifies that they match
-        the regex supplied in INPUTS. The subject input must be betwee 1 and
-        100 characters. The content input must be at least 1.
-        Returns a dictionary with added error messages if necessary.
-        '''
-        output_strings = {}
-        for input in raw_inputs:
-            if not self._is_valid(raw_inputs[input], input):
-                output_strings[input + "_error"] = "Invalid input."
-                output_strings[input] = raw_inputs.get(input)
-                self.valid_input = False
-            else:
-                output_strings[input] = raw_inputs.get(input)
-        return output_strings
-        
-    def _is_valid(self, input, regex_key):
-        '''
-        Helper function that returns a boolean value based on whether
-        input string matches regex obtained from INPUTS with regex_key.
-        '''
-        pattern = re.compile(INPUTS[regex_key])
-        return pattern.match(input)
         
 class NewPostDisplay(Handler):
     def get(self, blog_post_id):
