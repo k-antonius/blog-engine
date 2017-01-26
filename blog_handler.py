@@ -15,14 +15,51 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
                                extensions=['jinja2.ext.autoescape'],
                                autoescape=True)
-MAIN_PAGE = "blog.html"
-NEW_POST = "newpost.html"
-NEW_POST_DISPLAY = "new_post_display.html"
-SIGNUP_TEMPLATE = "signup_page.html"
-WELCOME_TEMPLATE = "welcome.html"
-LOGIN_TEMPLATE = "login_page.html"
+    
 
 class Handler(webapp2.RequestHandler):
+    def __init__(self, request, response):
+        self.initialize(request, response)
+        
+        # HTML Filenames
+        self.MAIN_PAGE = "blog.html"
+        self.NEW_POST = "newpost.html"
+        self.NEW_POST_DISPLAY = "new_post_display.html"
+        self.SIGNUP_TEMPLATE = "signup_page.html"
+        self.WELCOME_TEMPLATE = "welcome.html"
+        self.LOGIN_TEMPLATE = "login_page.html"
+
+        # Form Input Fields
+        self.USER = "username"
+        self.PASSWORD = "password"
+        self.PWD_VERIFY = "pwd_verify"
+        self.EMAIL = "email"
+        self.SUBJECT = "subject"
+        self.CONTENT = "content"
+        
+        self.ERROR = "_error"
+        
+        # Form Input Verification regex (type : regex) where type is one
+        # of the defined form input fields above.
+        self.form_verification_table = {
+                                USER : r"^[a-zA-Z0-9_-]{3,20}$",
+                                PASSWORD: r"^.{3,20}$",
+                                PWD_VERIFY : r"^.{3,20}$",
+                                EMAIL: r"(^[\S]+@[\S]+.[\S]+$)|(^(?![\s\S]))",
+                                SUBJECT : "^.{1,100}$",
+                                CONTENT : "^.{1,}$"
+                                }
+        # Form Input Verification Error Messages
+        self.form_input_error_msgs = {
+                            USER : "The username is invalid.",
+                            PASSWORD : "The password is invalid.",
+                            PWD_VERIFY : "The passwords don't match.",
+                            EMAIL : "Invalid email address.",
+                            SUBJECT : "You must have a subject of less than" 
+                                       + "100 chars in length.",
+                            CONTENT: "Your post must have content."
+                            }
+        
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
         
@@ -32,26 +69,108 @@ class Handler(webapp2.RequestHandler):
     
     def render(self, *a, **kw):
         self.write(self.render_str(*a, **kw))
+        
+    def get_attribute(self, type):
+        '''
+        Returns the value of the specified request type.
+        '''
+        return self.request.get(type)     
+    
+class User(ndb.Model):
+    '''
+    This is a root entity.
+    '''
+    name = ndb.StringProperty(required = True)
+    password = ndb.StringProperty(required = True)
+    email = ndb.EmailProperty()
+    date_created = ndb.DateTimeProperty(auto_now_add = True)
+    user_picture = ndb.LinkProperty()
+    num_posts = ndb.IntegerProperty()
+    
+    @classmethod
+    def create_new_user(cls, user_name, password, email=None):
+        '''
+        Creates a new user account in the database. If account is successfully
+        created returns the user's key. If the user already exists, this 
+        method returns a string error message.
+        
+        @param user_name is a str -- also the id of the key.
+        @param password is a str -- the user's password.
+        @param email - optional email address
+        '''
+        
+        # ensure the user is in the data base
+        # check the password matches the password in the database
+        # set the cookie for the user logged in
+        if cls.already_exists(user_name):
+            return "User already exists."
+        else :
+            new_user = User(name = user_name, 
+                            password = password, 
+                            email= email, 
+                            id = user_name,
+                            num_posts = 0)
+            new_user_key = new_user.put()
+            return new_user_key
+                            
+    @classmethod
+    def already_exists(cls, user_name):
+        '''
+        Checks the database to see whether the user exists. Returns true if 
+        is does, false otherwise.
+        '''
+        if cls.get_by_id(user_name):
+            return true
+        else:
+            return false
 
 class BlogPost(ndb.Model):
     '''
-    Class to describe the entity used to store blog entries in the data store.
-    This entity has three properties, the title of the post, the text body 
-    content of the post, and the time the post is created.
+    Parent is the user-author of the post.
     '''
-    post_title = ndb.StringProperty(required = True)
-    post_body = ndb.TextProperty(required = True)
-    post_time = ndb.DateTimeProperty(auto_now_add=True)
+    post_subject = ndb.StringProperty(required = True)
+    post_content = ndb.TextProperty(required = True)
+    post_author = ndb.StringProperty(required = True)
+    date_created = ndb.DateTimeProperty(auto_now_add = True)
+    last_edited = ndb.DateTimeProperty()
+    num_likes = ndb.IntegerProperty()
     
-class User(ndb.Model):
-    name = ndb.StringProperty(required = True)
-    password = ndb.StringProperty(required = True)
-    email = ndb.StringProperty()
+    
+    @classmethod
+    def create_new_post(cls, subject, content, user_name):
+        '''
+        Creates a new post in the database, setting its subject, content,
+        and author. The key for the post is in the form:
+        ("User", user_name, "post_id", post_number) post number is the number
+        of posts a given user has made.
+        An ndb User entity is the parent of every post.
+        '''
+        user_key = ndb.Key("User", user_name)
+        user = user_key.get()
+        post_number = user.num_posts + 1
+        new_post = BlogPost(post_subject = subject,
+                            post_content = content,
+                            post_author = user_name,
+                            parent = user_key)
+        new_post.key = ndb.Key("User", user_name, "post_id", post_number)
+        new_post_key = new_post.put()
+        return new_post_key
+    
+class Comment(ndb.Model):
+    '''
+    Parent is the blog post.
+    '''
+    comment_body = ndb.TextProperty(required = True)
+    date_created = ndb.DateTimeProperty(auto_now_add = True)
+    last_edited = ndb.DateTimeProperty()
+    author = ndb.StringProperty(require = True)
+    num_likes = ndb.IntegerProperty()
+    
 
 class BlogMainPage(Handler):
     def get(self):
         all_posts = BlogPost.all()
-        all_posts.order('post_time')
+        all_posts.order('date_created')
         self.render(MAIN_PAGE, blog_posts = all_posts)
 
 class NewPost(Handler):
@@ -68,11 +187,7 @@ class NewPost(Handler):
         adds a new entity to the database, storing the information from
         the new blog post.
         '''
-        INPUTS = {"subject" : "^.{1,100}$",
-          "content" : "^.{1,}$"}
-        errors = {"subject" : "You must have a subject of less than 100 char" +
-                  "s in length.",
-                  "content" : "Your post must have content."}
+        
         form_helper = FormInputHelper(INPUTS.iterkeys(), INPUTS, errors, self)
         to_render = form_helper.process_form_inputs()
         if not form_helper.valid_input:
@@ -81,7 +196,7 @@ class NewPost(Handler):
             new_blog_post = BlogPost(post_title = to_render.get("subject"),
                                      post_body = to_render.get("content"))
             new_db_entry = new_blog_post.put()
-            new_db_entry_id = new_db_entry.id()
+            new_db_entry_id = new_db_entry.id() # Use the URL friendly feature!
             
             self.redirect('/blog/post_id/' + str(new_db_entry_id))
         
@@ -99,15 +214,7 @@ class Signup(Handler):
     # otherwise login page will work even if you don't sign up!
     def __init__(self, request, response):
         self.initialize(request, response)
-        self.input_to_regex = {"username" : r"^[a-zA-Z0-9_-]{3,20}$",
-                          "password" : r"^.{3,20}$",
-                          "verify" : r"^.{3,20}$",
-                          "email" : r"(^[\S]+@[\S]+.[\S]+$)|(^(?![\s\S]))"
-                          }
-        self.input_to_error = {"username" : "The username is invalid.",
-                               "password" : "The password is invalid.",
-                               "verify" : "The verification field is invalid.",
-                               "email" : "Invalid email address."}
+        
 
     def get(self):
         self.render(SIGNUP_TEMPLATE)
@@ -197,6 +304,7 @@ class FormInputHelper(object):
     is_signup_form - optional flag, will
     handler_obj - an instance of the webapp2 handler object using this class.
     '''
+    
     def __init__(self, form_fields, form_regex, form_errors, handler_obj,
                  is_signup_form = None):
         self.form_fields = {}
