@@ -15,50 +15,24 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
                                extensions=['jinja2.ext.autoescape'],
                                autoescape=True)
-    
+# HTML Filenames
+MAIN_PAGE = "blog.html"
+NEW_POST = "newpost.html"
+NEW_POST_DISPLAY = "new_post_display.html"
+SIGNUP_TEMPLATE = "signup_page.html"
+WELCOME_TEMPLATE = "welcome.html"
+LOGIN_TEMPLATE = "login_page.html"
+
+# Form Input Fields
+USER = "username"
+PASSWORD = "password"
+PWD_VERIFY = "pwd_verify"
+EMAIL = "email"
+SUBJECT = "subject"
+CONTENT = "content"
+ERROR = "_error"    
 
 class Handler(webapp2.RequestHandler):
-    def __init__(self, request, response):
-        self.initialize(request, response)
-        
-        # HTML Filenames
-        self.MAIN_PAGE = "blog.html"
-        self.NEW_POST = "newpost.html"
-        self.NEW_POST_DISPLAY = "new_post_display.html"
-        self.SIGNUP_TEMPLATE = "signup_page.html"
-        self.WELCOME_TEMPLATE = "welcome.html"
-        self.LOGIN_TEMPLATE = "login_page.html"
-
-        # Form Input Fields
-        self.USER = "username"
-        self.PASSWORD = "password"
-        self.PWD_VERIFY = "pwd_verify"
-        self.EMAIL = "email"
-        self.SUBJECT = "subject"
-        self.CONTENT = "content"
-        
-        self.ERROR = "_error"
-        
-        # Form Input Verification regex (type : regex) where type is one
-        # of the defined form input fields above.
-        self.form_verification_table = {
-                                USER : r"^[a-zA-Z0-9_-]{3,20}$",
-                                PASSWORD: r"^.{3,20}$",
-                                PWD_VERIFY : r"^.{3,20}$",
-                                EMAIL: r"(^[\S]+@[\S]+.[\S]+$)|(^(?![\s\S]))",
-                                SUBJECT : "^.{1,100}$",
-                                CONTENT : "^.{1,}$"
-                                }
-        # Form Input Verification Error Messages
-        self.form_input_error_msgs = {
-                            USER : "The username is invalid.",
-                            PASSWORD : "The password is invalid.",
-                            PWD_VERIFY : "The passwords don't match.",
-                            EMAIL : "Invalid email address.",
-                            SUBJECT : "You must have a subject of less than" 
-                                       + "100 chars in length.",
-                            CONTENT: "Your post must have content."
-                            }
         
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
@@ -69,7 +43,7 @@ class Handler(webapp2.RequestHandler):
     
     def render(self, *a, **kw):
         self.write(self.render_str(*a, **kw))
-        
+    
     def get_attribute(self, type):
         '''
         Returns the value of the specified request type.
@@ -80,15 +54,15 @@ class User(ndb.Model):
     '''
     This is a root entity.
     '''
-    name = ndb.StringProperty(required = True)
+    user_name = ndb.StringProperty(required = True)
     password = ndb.StringProperty(required = True)
-    email = ndb.EmailProperty()
+    email = ndb.StringProperty()
     date_created = ndb.DateTimeProperty(auto_now_add = True)
-    user_picture = ndb.LinkProperty()
+    user_picture = ndb.StringProperty()
     num_posts = ndb.IntegerProperty()
     
     @classmethod
-    def create_new_user(cls, user_name, password, email=None):
+    def create_new_user(cls, form_data):
         '''
         Creates a new user account in the database. If account is successfully
         created returns the user's key. If the user already exists, this 
@@ -102,13 +76,13 @@ class User(ndb.Model):
         # ensure the user is in the data base
         # check the password matches the password in the database
         # set the cookie for the user logged in
-        if cls.already_exists(user_name):
-            return "User already exists."
+        if cls.already_exists(form_data.get(USER)):
+            return None
         else :
-            new_user = User(name = user_name, 
-                            password = password, 
-                            email= email, 
-                            id = user_name,
+            new_user = User(user_name = form_data.get(USER), 
+                            password = form_data.get(PASSWORD), 
+                            email= form_data.get(EMAIL), 
+                            id = form_data.get(USER),
                             num_posts = 0)
             new_user_key = new_user.put()
             return new_user_key
@@ -120,9 +94,9 @@ class User(ndb.Model):
         is does, false otherwise.
         '''
         if cls.get_by_id(user_name):
-            return true
+            return True
         else:
-            return false
+            return False
 
 class BlogPost(ndb.Model):
     '''
@@ -131,6 +105,7 @@ class BlogPost(ndb.Model):
     post_subject = ndb.StringProperty(required = True)
     post_content = ndb.TextProperty(required = True)
     post_author = ndb.StringProperty(required = True)
+    post_number = ndb.IntegerProperty()
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
     num_likes = ndb.IntegerProperty()
@@ -154,6 +129,8 @@ class BlogPost(ndb.Model):
                             parent = user_key)
         new_post.key = ndb.Key("User", user_name, "post_id", post_number)
         new_post_key = new_post.put()
+        user.num_posts += 1
+        assert user.num_posts == post_number
         return new_post_key
     
 class Comment(ndb.Model):
@@ -163,7 +140,7 @@ class Comment(ndb.Model):
     comment_body = ndb.TextProperty(required = True)
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
-    author = ndb.StringProperty(require = True)
+    author = ndb.StringProperty(required = True)
     num_likes = ndb.IntegerProperty()
     
 
@@ -209,41 +186,51 @@ class NewPostDisplay(Handler):
                     content=current_body)
         
 class Signup(Handler):
-    # TODO add user to database when sign up. Check to make sure there isn't
-    # already another user with username/email
-    # otherwise login page will work even if you don't sign up!
-    def __init__(self, request, response):
-        self.initialize(request, response)
-        
 
     def get(self):
         self.render(SIGNUP_TEMPLATE)
         
     def post(self):
-
-        helper = FormInputHelper(self.input_to_regex.iterkeys(),
-                                 self.input_to_regex,
-                                 self.input_to_error,
-                                 self,
-                                 True)
-        to_render = helper.process_form_input()
+        form_data = self._validate_user_input()
+        self._check_user_exists(form_data)
         
-        if not helper.valid_input:
-            self.render(SIGNUP_TEMPLATE, **to_render)
+        cookie_helper = CookieUtil(self)
+        cookie_helper.set_cookie(USER, form_data.get(USER))
+        pwd_helper = PwdUtil(form_data.get(PASSWORD))
+        form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
+        User.create_new_user(form_data)
+        self.redirect("/blog/welcome")
+                
+    def _validate_user_input(self):
+        '''
+        Checks that user input into the signup form is valid. If it is not,
+        generates suitable error messages and re-renders the page. If valid,
+        returns the data input into the form in a dict keyed to the global
+        constants.
+        '''
+        form_helper = FormHelper(self)
+        form_data = form_helper.validate_form_data(USER, PASSWORD, PWD_VERIFY,
+                                                  EMAIL)
+        if not form_helper.valid_input:
+            self.render(SIGNUP_TEMPLATE, **form_data)
         else:
-            cookie_helper = CookieUtil(self)
-            cookie_helper.set_cookie("name", to_render.get("username"))
-            pwd_helper = PwdUtil(to_render.get("password"))
-            new_user = User(name = to_render.get("username"),
-                            password = pwd_helper.new_pwd_salt_pair(),
-                            id = to_render.get("username"))
-            new_user.put()
-            self.redirect("/blog/welcome")
+            return form_data
+            
+    def _check_user_exists(self, form_data):
+        '''
+        Queries the database to see whether a user with the given username
+        exists. If it does it re-renders the page with an appropriate error
+        message.
+        '''
+        if User.already_exists(form_data.get(USER)):
+            form_data[USER + ERROR] = ("User already exists. Please" +
+                                       " choose another user name.")
+            self.render(SIGNUP_TEMPLATE, **form_data)
     
 class Welcome(Handler):
     def get(self):
         cookie_helper = CookieUtil(self)
-        name_cookie = self.request.cookies.get("name")
+        name_cookie = self.request.cookies.get(USER)
         if name_cookie and (len(cookie_helper.get_value(name_cookie)) > 1):
             if (cookie_helper.validate_hash(name_cookie)):
                 username = cookie_helper.get_value(name_cookie)
@@ -254,11 +241,11 @@ class Welcome(Handler):
             self.redirect("/blog/signup")
                 
 class Login(Handler):
-    # add check to make sure user is in database
     def get(self):
         self.render(LOGIN_TEMPLATE)
     
     def post(self):
+        # These should be removed now
         form_fields = ["username",
                             "password"]
         regex_map = {"username" : r"^[a-zA-Z0-9_-]{3,20}$",
@@ -291,86 +278,63 @@ class Logout(Handler):
         cookie_helper = CookieUtil(self)
         cookie_helper.set_cookie("name", "")
         self.redirect("/blog/signup")
-    
         
-class FormInputHelper(object):
+class FormHelper(object):
     '''
     Class to help process form input.
-    
-    form_fields - a list of the names of form fields. Need to be strings.
-    form_regex - a dictionary that maps the name of the form field to the 
-                regex matching acceptable input to that field.
-    form_errors - dictionary mapping form field names to error messages
-    is_signup_form - optional flag, will
-    handler_obj - an instance of the webapp2 handler object using this class.
     '''
-    
-    def __init__(self, form_fields, form_regex, form_errors, handler_obj,
-                 is_signup_form = None):
-        self.form_fields = {}
-        for field_name in form_fields:
-            self.form_fields[field_name] = None
-        self.form_errors = form_errors
-        self.form_regex = form_regex
+    # Form Input Verification regex (type : regex) where type is one
+    # of the defined form input fields above.
+    def __init__(self, handler):
+        self._regex_table = {
+                        USER : r"^[a-zA-Z0-9_-]{3,20}$",
+                        PASSWORD: r"^.{3,20}$",
+                        PWD_VERIFY : r"^.{3,20}$",
+                        EMAIL: r"(^[\S]+@[\S]+.[\S]+$)|(^(?![\s\S]))",
+                        SUBJECT : "^.{1,100}$",
+                        CONTENT : "^.{1,}$"
+                        }
+        # Form Input Verification Error Messages
+        self._error_table = {
+                        USER : "The username is invalid.",
+                        PASSWORD : "The password is invalid.",
+                        PWD_VERIFY : "The passwords don't match.",
+                        EMAIL : "Invalid email address.",
+                        SUBJECT : "You must have a subject of less than" 
+                                   + "100 chars in length.",
+                        CONTENT: "Your post must have content."
+                        }
         self.valid_input = True
-        self.output_map = {}
-        self.is_signup_form = is_signup_form
-        self.handler_obj = handler_obj
+        self._handler = handler
         
-    def process_form_input(self):
-        '''
-        Rename this method.
-        '''
-        self.get_inputs()
-        self.validate_form_data()
-        if self.is_signup_form:
-            self.passwords_match()
-        return self.output_map
-        
-    def _is_valid(self, form_data, field_name):
+    def _is_input_valid(self, input_name):
         '''
         Helper method.
         If returns true if the form_data is valid, false otherwise.
         field_name - name of the form field.
         '''
-        pattern = re.compile(self.form_regex[field_name])
-        return pattern.match(form_data)
-    
-    def get_inputs(self):
-        '''
-        Uses a GET request of handler object to populate the form_fields
-        dictionary with the input using put in the form.
-        '''
-        for field in self.form_fields:
-            self.form_fields[field] = self.handler_obj.request.get(field)
+        if input_name == PWD_VERIFY:
+            return self._handler.get_attribute(
+                            PWD_VERIFY) == self._handler.get_attribute(PASSWORD)
+        else:
+            pattern = re.compile(self._regex_table[input_name])
+            return pattern.match(self._handler.get_attribute(input_name))
         
-    
-    def validate_form_data(self):
+    def validate_form_data(self, *args):
         '''
         Checks each input form element to make sure it matches the specified
         requirements and updates the appropriate form output. If the input
         is not correct, generates an error message.
         '''
-        for field_name in self.form_fields:
-            if not self._is_valid(self.form_fields.get(field_name), 
-                                  field_name):
-                
+        to_render = {}
+        for input_name in args:
+            if not self._is_input_valid(input_name):
+                to_render[input_name + ERROR] = self._error_table.get(input_name)
+                to_render[input_name] = ""
                 self.valid_input = False
-                self.output_map[field_name + "_error"] = self.form_errors.get(
-                                                                    field_name)
-                self.output_map[field_name] = ""
             else:
-                self.output_map[field_name] = self.form_fields[field_name]
-    
-    def passwords_match(self):
-        '''
-        This method only works if the optional is_signup_form argument is 
-        passed to the constructor.
-        Check whether input password and verify fields match.
-        '''
-        if not self.form_fields["password"] == self.form_fields["verify"]:
-            self.output_map["password_error"] = "Passwords don't match"
-            self.valid_input = False
+                to_render[input_name] = self._handler.get_attribute(input_name)
+        return to_render
         
 app = webapp2.WSGIApplication([("/blog", BlogMainPage),
                                ("/blog/newpost", NewPost),
