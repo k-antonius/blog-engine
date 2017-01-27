@@ -77,7 +77,7 @@ class PwdUtil(object):
         '''
         Takes clear_text and returns a hashed version of that text.
         Takes an optional parameter db_password, which is the hashed password
-        and salt combination stored in the database. This option is ued when
+        and salt combination stored in the database. This option is used when
         verifying a password is correct.
         '''
         
