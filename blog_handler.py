@@ -9,7 +9,7 @@ import re
 import jinja2
 import webapp2
 from google.appengine.ext import ndb
-from cookie_validator import CookieUtil, PwdUtil
+from blog_utilities import CookieUtil, PwdUtil
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
@@ -230,15 +230,12 @@ class Signup(Handler):
 class Welcome(Handler):
     def get(self):
         cookie_helper = CookieUtil(self)
-        name_cookie = self.request.cookies.get(USER)
-        if name_cookie and (len(cookie_helper.get_value(name_cookie)) > 1):
-            if (cookie_helper.validate_hash(name_cookie)):
-                username = cookie_helper.get_value(name_cookie)
-                self.render(WELCOME_TEMPLATE, username = username)
-            else:
-                self.redirect("/blog/login")
+        username = cookie_helper.get_cookie(USER)
+        if username:
+            self.render(WELCOME_TEMPLATE, username = username)
         else:
-            self.redirect("/blog/signup")
+            self.redirect("/blog/login") # Eventually change for to allow 
+                                         # for either signup or login
                 
 class Login(Handler):
     def get(self):
@@ -281,7 +278,8 @@ class Logout(Handler):
         
 class FormHelper(object):
     '''
-    Class to help process form input.
+    Class to help process form input. 
+    @param hander is the Handler sub-class instance using this class.
     '''
     # Form Input Verification regex (type : regex) where type is one
     # of the defined form input fields above.
