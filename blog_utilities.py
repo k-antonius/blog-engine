@@ -36,7 +36,7 @@ class CookieUtil(object):
         None.
         '''
         cookie = self.handler.request.cookies.get(cookie_name)
-        if (cookie and not self._is_empty(cooke) 
+        if (cookie and not self._is_empty(cookie) 
                    and self._validate_cookie(cookie)):
             return self._get_value(cookie)
         else:
@@ -58,17 +58,17 @@ class CookieUtil(object):
     def _value_and_hash(self, value):
         '''
         Takes a string value, hashes it and returns a string in the format
-        "value|_hash"
+        "value|hash"
         '''
         hashed_value = self._hash(value)
-        return_template = "{value}|{_hash}"
+        return_template = "{value}|{hash}"
         return return_template.format(value=value, hash=hashed_value)
     
     def _validate_cookie(self, value_w_hash):
         '''
-        Takes a cookie value and unknown _hash in the format "value|_hash",
+        Takes a cookie value and unknown hash in the format "value|hash",
         re-hashes the value, and returns true if the re-hashed value is 
-        equivalent to the unknown _hash.
+        equivalent to the unknown hash.
         '''
         value_w_hash = value_w_hash.encode("utf-8")
         value = self._get_value(value_w_hash)
@@ -91,7 +91,7 @@ class CookieUtil(object):
     
     def _get_value(self, value_w_hash):
         '''
-        Given an input in the format "value|_hash" extracts and returns only the
+        Given an input in the format "value|hash" extracts and returns only the
         value part preceding the pipe character.
         '''
         slice_idx = value_w_hash.index("|")
