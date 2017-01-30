@@ -23,6 +23,14 @@ SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
 
+# URI Routes
+HOME = "/blog"
+NEWPOST = HOME + "/new_post"
+SIGNUP = HOME + "/signup"
+WELCOME = HOME + "/user_welcome"
+LOGIN =  HOME + "/login"
+LOGOUT = HOME + "/logout"
+
 # Form Input Fields
 USER = "username"
 PASSWORD = "password"
@@ -48,7 +56,36 @@ class Handler(webapp2.RequestHandler):
         '''
         Returns the value of the specified request type.
         '''
-        return self.request.get(type)     
+        return self.request.get(type)
+    
+    def _check_logged_in(self, route):
+        '''
+        Checks to make sure correct user is logged in. If not redirects to 
+        @param URI route.
+        If a user is logged in returns the user's name as a string.
+        '''
+        cookie_helper = CookieUtil(self)
+        # get user name from cookie
+        # check to make sure user is logged in
+        logged_in_user = cookie_helper.get_cookie(USER)
+        if not logged_in_user:
+            self.redirect(route)
+        else:
+            return logged_in_user
+            
+    def _validate_user_input(self, template, *args):
+        '''
+        Checks that user input into the form is valid. If it is not,
+        generates suitable error messages and re-renders the page. If valid,
+        returns the data input into the form in a dict keyed to the global
+        constants.
+        '''
+        form_helper = FormHelper(self)
+        form_data = form_helper.validate_form_data(args)
+        if not form_helper.valid_input:
+            self.render(template, **form_data)
+        else:
+            return form_data     
     
 class User(ndb.Model):
     '''
@@ -97,6 +134,29 @@ class User(ndb.Model):
             return True
         else:
             return False
+    
+    @classmethod
+    def increment_num_posts(cls, user_name):
+        '''
+        Increment the number of posts this user has made by one, 
+        given the user name, the key id of a user entity. Returns the number
+        of posts for this user resulting from the increment operation.
+        '''
+        user_key = ndb.Key("User", user_name)
+        user = user_key.get()
+        user.num_posts += 1
+        user.put()
+        return user.num_posts
+    
+    @classmethod
+    def get_num_posts(cls, user_name):
+        '''
+        Given the key id of this user, returns the number of posts this user
+        has made.
+        '''
+        user_key = ndb.Key("User", user_name)
+        user = user_key.get()
+        return user.num_posts
 
 class BlogPost(ndb.Model):
     '''
@@ -112,7 +172,7 @@ class BlogPost(ndb.Model):
     
     
     @classmethod
-    def create_new_post(cls, subject, content, user_name):
+    def create_new_post(cls, user_name, form_data):
         '''
         Creates a new post in the database, setting its subject, content,
         and author. The key for the post is in the form:
@@ -120,16 +180,15 @@ class BlogPost(ndb.Model):
         of posts a given user has made.
         An ndb User entity is the parent of every post.
         '''
-        user_key = ndb.Key("User", user_name)
-        user = user_key.get()
-        post_number = user.num_posts + 1
-        new_post = BlogPost(post_subject = subject,
-                            post_content = content,
+        
+        post_number = User.increment_num_posts(user_name)
+        new_post = BlogPost(post_subject = form_data.get(SUBJECT),
+                            post_content = form_data.get(CONTENT),
                             post_author = user_name,
-                            parent = user_key)
-        new_post.key = ndb.Key("User", user_name, "post_id", post_number)
+                            parent = ndb.Key("User", user_name))
+        new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
         new_post_key = new_post.put()
-        user.num_posts += 1
+       
         assert user.num_posts == post_number
         return new_post_key
     
@@ -164,25 +223,18 @@ class NewPost(Handler):
         adds a new entity to the database, storing the information from
         the new blog post.
         '''
-        
-        form_helper = FormInputHelper(INPUTS.iterkeys(), INPUTS, errors, self)
-        to_render = form_helper.process_form_inputs()
-        if not form_helper.valid_input:
-            self.render(NEW_POST, **to_render)
-        else:
-            new_blog_post = BlogPost(post_title = to_render.get("subject"),
-                                     post_body = to_render.get("content"))
-            new_db_entry = new_blog_post.put()
-            new_db_entry_id = new_db_entry.id() # Use the URL friendly feature!
-            
-            self.redirect('/blog/post_id/' + str(new_db_entry_id))
+        user_name = self._check_logged_in(SIGNUP)
+        valid_data = self._validate_user_input(NEW_POST, SUBJECT, CONTENT)
+        new_post_key = BlogPost.create_new_post(user_name, valid_data)
+        self.redirect('/blog/post_id/' + str(new_post_key.urlsafe()))
+    
         
 class NewPostDisplay(Handler):
     def get(self, blog_post_id):
         current_blog_post = BlogPost.get_by_id(long(blog_post_id))
-        current_title = current_blog_post.post_title
-        current_body = current_blog_post.post_body
-        self.render(NEW_POST_DISPLAY, title=current_title, 
+        current_title = current_blog_post.post_subject
+        current_body = current_blog_post.post_content
+        self.render(NEW_POST_DISPLAY, subject=current_title, 
                     content=current_body)
         
 class Signup(Handler):
@@ -191,30 +243,17 @@ class Signup(Handler):
         self.render(SIGNUP_TEMPLATE)
         
     def post(self):
-        form_data = self._validate_user_input()
-        self._check_user_exists(form_data)
-        
-        cookie_helper = CookieUtil(self)
-        cookie_helper.set_cookie(USER, form_data.get(USER))
-        pwd_helper = PwdUtil(form_data.get(PASSWORD))
-        form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
-        User.create_new_user(form_data)
-        self.redirect("/blog/welcome")
-                
-    def _validate_user_input(self):
-        '''
-        Checks that user input into the signup form is valid. If it is not,
-        generates suitable error messages and re-renders the page. If valid,
-        returns the data input into the form in a dict keyed to the global
-        constants.
-        '''
-        form_helper = FormHelper(self)
-        form_data = form_helper.validate_form_data(USER, PASSWORD, PWD_VERIFY,
-                                                  EMAIL)
-        if not form_helper.valid_input:
-            self.render(SIGNUP_TEMPLATE, **form_data)
-        else:
-            return form_data
+        valid_form_data = self._validate_user_input(SIGNUP_TEMPLATE,
+                                                    USER, PASSWORD, PWD_VERIFY,
+                                                    EMAIL)
+        if valid_form_data:
+            self._check_user_exists(valid_form_data)
+            cookie_helper = CookieUtil(self)
+            cookie_helper.set_cookie(USER, valid_form_data.get(USER))
+            pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
+            valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
+            User.create_new_user(valid_form_data)
+            self.redirect("/blog/welcome")
             
     def _check_user_exists(self, form_data):
         '''
@@ -318,7 +357,7 @@ class FormHelper(object):
             pattern = re.compile(self._regex_table[input_name])
             return pattern.match(self._handler.get_attribute(input_name))
         
-    def validate_form_data(self, *args):
+    def validate_form_data(self, args):
         '''
         Checks each input form element to make sure it matches the specified
         requirements and updates the appropriate form output. If the input
@@ -334,11 +373,11 @@ class FormHelper(object):
                 to_render[input_name] = self._handler.get_attribute(input_name)
         return to_render
         
-app = webapp2.WSGIApplication([("/blog", BlogMainPage),
-                               ("/blog/newpost", NewPost),
+app = webapp2.WSGIApplication([(HOME, BlogMainPage),
+                               (NEW_POST, NewPost),
                                (r"/blog/post_id/(\d+)", NewPostDisplay),
-                               ("/blog/signup", Signup),
-                               ("/blog/welcome", Welcome),
-                               ("/blog/login", Login),
-                               ("/blog/logout", Logout)], debug=True)
+                               (SIGNUP, Signup),
+                               (WELCOME, Welcome),
+                               (LOGIN, Login),
+                               (LOGOUT, Logout)], debug=True)
 
