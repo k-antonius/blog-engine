@@ -48,10 +48,19 @@ class CookieUtil(object):
         value is empty, false otherwise
         '''
         return len(self._get_value(cookie)) < 1 # This was > 1, which seems wrong. Test this. 
-        
+    
     def _hash(self, str_to_hash):
         '''
         Hashes a string value using the hmac algorith using sha256.
+        '''
+        return str(hmac.new(KEY, str_to_hash, hashlib.sha256).hexdigest())
+    
+    @classmethod
+    def test_hash(cls, str_to_hash):
+        '''
+        Hashes a string value using the hmac algorith using sha256. This is a 
+        class method used for testing to avoid the need for instantiating a new
+        object during testing.
         '''
         return str(hmac.new(KEY, str_to_hash, hashlib.sha256).hexdigest())
     
