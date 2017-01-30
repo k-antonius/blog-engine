@@ -6,9 +6,9 @@
 </head>
 <body>
 	{% for post in blog_posts.run() %}
-  <div><h3>{{post.post_title}}</h3></div>
+  <div><h3>{{post.post_subject}}</h3></div>
   <br>
-  <div>{{post.post_body}}</div>
+  <div>{{post.post_content}}</div>
   <br>
   <div>__________________________________</div>
   <br>
