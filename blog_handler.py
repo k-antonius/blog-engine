@@ -16,9 +16,9 @@ JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
                                extensions=['jinja2.ext.autoescape'],
                                autoescape=True)
 # HTML Filenames
-MAIN_PAGE = "blog.html"
-NEW_POST = "newpost.html"
-NEW_POST_DISPLAY = "new_post_display.html"
+MAIN_PAGE_TEMPLATE = "blog.html"
+NEW_POST_TEMPLATE = "newpost.html"
+POST_ONLY_TEMPLATE = "new_post_display.html"
 SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
@@ -189,7 +189,6 @@ class BlogPost(ndb.Model):
         new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
         new_post_key = new_post.put()
        
-        assert user.num_posts == post_number
         return new_post_key
     
 class Comment(ndb.Model):
@@ -207,7 +206,7 @@ class BlogMainPage(Handler):
     def get(self):
         all_posts = BlogPost.all()
         all_posts.order('date_created')
-        self.render(MAIN_PAGE, blog_posts = all_posts)
+        self.render(MAIN_PAGE_TEMPLATE, blog_posts = all_posts)
 
 class NewPost(Handler):
     
@@ -215,7 +214,7 @@ class NewPost(Handler):
         '''
         Renders the new post form on an initial request.
         '''
-        self.render(NEW_POST)
+        self.render(NEW_POST_TEMPLATE)
         
     def post(self):
         '''
@@ -224,17 +223,20 @@ class NewPost(Handler):
         the new blog post.
         '''
         user_name = self._check_logged_in(SIGNUP)
-        valid_data = self._validate_user_input(NEW_POST, SUBJECT, CONTENT)
+        print self.response.headers
+        valid_data = self._validate_user_input(NEW_POST_TEMPLATE,
+                                               SUBJECT, CONTENT)
         new_post_key = BlogPost.create_new_post(user_name, valid_data)
         self.redirect('/blog/post_id/' + str(new_post_key.urlsafe()))
     
         
 class NewPostDisplay(Handler):
     def get(self, blog_post_id):
-        current_blog_post = BlogPost.get_by_id(long(blog_post_id))
+        current_blog_post_key = ndb.Key(urlsafe=blog_post_id)
+        current_blog_post = current_blog_post_key.get()
         current_title = current_blog_post.post_subject
         current_body = current_blog_post.post_content
-        self.render(NEW_POST_DISPLAY, subject=current_title, 
+        self.render(POST_ONLY_TEMPLATE, subject=current_title, 
                     content=current_body)
         
 class Signup(Handler):
@@ -253,7 +255,7 @@ class Signup(Handler):
             pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
             valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
             User.create_new_user(valid_form_data)
-            self.redirect("/blog/welcome")
+            self.redirect(WELCOME)
             
     def _check_user_exists(self, form_data):
         '''
@@ -273,7 +275,7 @@ class Welcome(Handler):
         if username:
             self.render(WELCOME_TEMPLATE, username = username)
         else:
-            self.redirect("/blog/login") # Eventually change for to allow 
+            self.redirect(LOGIN) # Eventually change for to allow 
                                          # for either signup or login
                 
 class Login(Handler):
@@ -335,7 +337,7 @@ class FormHelper(object):
         self._error_table = {
                         USER : "The username is invalid.",
                         PASSWORD : "The password is invalid.",
-                        PWD_VERIFY : "The passwords don't match.",
+                        PWD_VERIFY : "The passwords do not match.",
                         EMAIL : "Invalid email address.",
                         SUBJECT : "You must have a subject of less than" 
                                    + "100 chars in length.",
@@ -374,8 +376,8 @@ class FormHelper(object):
         return to_render
         
 app = webapp2.WSGIApplication([(HOME, BlogMainPage),
-                               (NEW_POST, NewPost),
-                               (r"/blog/post_id/(\d+)", NewPostDisplay),
+                               (NEWPOST, NewPost),
+                               (r"/blog/post_id/(\w+-\w+)", NewPostDisplay),
                                (SIGNUP, Signup),
                                (WELCOME, Welcome),
                                (LOGIN, Login),
