@@ -18,76 +18,71 @@ class CookieUtil(object):
     This class must be instantiated within a Handler object to be used.
     '''
     
-    def __init__(self, handler):
-        self.handler = handler
-        
-    def set_cookie(self, cookie_name, cookie_value):
+    @classmethod    
+    def set_cookie(cls, cookie_name, cookie_value, handler):
         '''
         Sets a cookie, giving it a name and value.
         '''
-        self.handler.response.headers.add_header(
-            "Set-Cookie", self._format_cookie(cookie_name, cookie_value))
-        
-    def get_cookie(self, cookie_name):
+        handler.response.headers.add_header(
+            "Set-Cookie", cls._format_cookie(cookie_name, cookie_value))
+    
+    @classmethod    
+    def get_cookie(cls, cookie_name, handler):
         '''
         Retrives a cookie with @param name from the response header of the 
         handler object. Will return the cookie value if a cookie with name 
         exists, is not empty, and is a validly hashed cookie, otherwise returns
         None.
         '''
-        cookie = self.handler.request.cookies.get(cookie_name)
-        if (cookie and not self._is_empty(cookie) 
-                   and self._validate_cookie(cookie)):
-            return self._get_value(cookie)
+        cookie = handler.request.cookies.get(cookie_name)
+        if (cookie and not cls._is_empty(cookie) 
+                   and cls._validate_cookie(cookie)):
+            return cls._get_value(cookie)
         else:
             return None
-        
-    def _is_empty(self, cookie):
+    
+    @classmethod    
+    def _is_empty(cls, cookie):
         '''
         Given a cookie string, @param cookie, will return true if the cookie
         value is empty, false otherwise
         '''
-        return len(self._get_value(cookie)) < 1 # This was > 1, which seems wrong. Test this. 
-    
-    def _hash(self, str_to_hash):
+        return len(cls._get_value(cookie)) < 1
+     
+    @classmethod
+    def _hash(cls, str_to_hash):
         '''
         Hashes a string value using the hmac algorith using sha256.
         '''
         return str(hmac.new(KEY, str_to_hash, hashlib.sha256).hexdigest())
     
     @classmethod
-    def test_hash(cls, str_to_hash):
-        '''
-        Hashes a string value using the hmac algorith using sha256. This is a 
-        class method used for testing to avoid the need for instantiating a new
-        object during testing.
-        '''
-        return str(hmac.new(KEY, str_to_hash, hashlib.sha256).hexdigest())
-    
-    def _value_and_hash(self, value):
+    def _value_and_hash(cls, value):
         '''
         Takes a string value, hashes it and returns a string in the format
         "value|hash"
         '''
-        hashed_value = self._hash(value)
+        hashed_value = cls._hash(value)
         return_template = "{value}|{hash}"
         return return_template.format(value=value, hash=hashed_value)
     
-    def _validate_cookie(self, value_w_hash):
+    @classmethod
+    def _validate_cookie(cls, value_w_hash):
         '''
         Takes a cookie value and unknown hash in the format "value|hash",
         re-hashes the value, and returns true if the re-hashed value is 
         equivalent to the unknown hash.
         '''
         value_w_hash = value_w_hash.encode("utf-8")
-        value = self._get_value(value_w_hash)
+        value = cls._get_value(value_w_hash)
         known_hash = value_w_hash[value_w_hash.index("|")+1:]
-        if self._hash(value) == known_hash:
+        if cls._hash(value) == known_hash:
             return True
         else:
             return False
     
-    def _format_cookie(self, name, value):
+    @classmethod
+    def _format_cookie(cls, name, value):
         '''
         Convenience method that returns a formatted cookie.
         '''
@@ -95,10 +90,11 @@ class CookieUtil(object):
         if value == "":
             new_value = value
         else:
-            new_value = self._value_and_hash(value)
+            new_value = cls._value_and_hash(value)
         return cookie_template.format(name=name, value = new_value)
     
-    def _get_value(self, value_w_hash):
+    @classmethod
+    def _get_value(cls, value_w_hash):
         '''
         Given an input in the format "value|hash" extracts and returns only the
         value part preceding the pipe character.
