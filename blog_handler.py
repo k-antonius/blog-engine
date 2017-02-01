@@ -64,10 +64,9 @@ class Handler(webapp2.RequestHandler):
         @param URI route.
         If a user is logged in returns the user's name as a string.
         '''
-        cookie_helper = CookieUtil(self)
         # get user name from cookie
         # check to make sure user is logged in
-        logged_in_user = cookie_helper.get_cookie(USER)
+        logged_in_user = CookieUtil.get_cookie(USER, self)
         if not logged_in_user:
             self.redirect(route)
         else:
@@ -186,6 +185,7 @@ class BlogPost(ndb.Model):
                             post_content = form_data.get(CONTENT),
                             post_author = user_name,
                             parent = ndb.Key("User", user_name))
+        new_post.post_number = post_number
         new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
         new_post_key = new_post.put()
        
@@ -223,7 +223,6 @@ class NewPost(Handler):
         the new blog post.
         '''
         user_name = self._check_logged_in(SIGNUP)
-        print self.response.headers
         valid_data = self._validate_user_input(NEW_POST_TEMPLATE,
                                                SUBJECT, CONTENT)
         new_post_key = BlogPost.create_new_post(user_name, valid_data)
@@ -250,8 +249,8 @@ class Signup(Handler):
                                                     EMAIL)
         if valid_form_data:
             self._check_user_exists(valid_form_data)
-            cookie_helper = CookieUtil(self)
-            cookie_helper.set_cookie(USER, valid_form_data.get(USER))
+#             cookie_helper = CookieUtil(self)
+            CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
             pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
             valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
             User.create_new_user(valid_form_data)
@@ -270,8 +269,7 @@ class Signup(Handler):
     
 class Welcome(Handler):
     def get(self):
-        cookie_helper = CookieUtil(self)
-        username = cookie_helper.get_cookie(USER)
+        username = CookieUtil.get_cookie(USER, self)
         if username:
             self.render(WELCOME_TEMPLATE, username = username)
         else:
