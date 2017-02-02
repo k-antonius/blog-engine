@@ -215,6 +215,7 @@ class NewPost(Handler):
         Renders the new post form on an initial request.
         '''
         self.render(NEW_POST_TEMPLATE)
+        user_name = self._check_logged_in(SIGNUP)
         
     def post(self):
         '''
@@ -223,10 +224,12 @@ class NewPost(Handler):
         the new blog post.
         '''
         user_name = self._check_logged_in(SIGNUP)
-        valid_data = self._validate_user_input(NEW_POST_TEMPLATE,
+        if user_name:
+            valid_data = self._validate_user_input(NEW_POST_TEMPLATE,
                                                SUBJECT, CONTENT)
-        new_post_key = BlogPost.create_new_post(user_name, valid_data)
-        self.redirect('/blog/post_id/' + str(new_post_key.urlsafe()))
+            if valid_data:
+                new_post_key = BlogPost.create_new_post(user_name, valid_data)
+                self.redirect('/blog/post_id/' + str(new_post_key.urlsafe()))
     
         
 class NewPostDisplay(Handler):
@@ -249,7 +252,6 @@ class Signup(Handler):
                                                     EMAIL)
         if valid_form_data:
             self._check_user_exists(valid_form_data)
-#             cookie_helper = CookieUtil(self)
             CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
             pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
             valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
