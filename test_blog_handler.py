@@ -114,6 +114,11 @@ class TestNewPost(TestBlog):
         self.assertEqual(post1.post_content, "test_content")
         self.assertEqual(post1.post_author, "test_username")
         self.assertEqual(post1.post_number, 1)
+        self.assertEqual(response.location, "http://localhost/blog/post_id/" +
+                         str(post1Key.urlsafe()), "new post not redirecting to" + 
+                         "static link page properly. Location was " + 
+                         str(response.location) + " but was expected to be " +
+                         str(post1Key.urlsafe())) 
         
         # Post 2
         
@@ -178,8 +183,6 @@ class TestNewPost(TestBlog):
         response = blog.app.get_response(blog.NEWPOST)
         self.assertEqual(response.location, "http://localhost/blog/signup",
                    "failure to be signed in did not redirect correctly (get)")
-    
-    # Test redirects to static link correctly when successful new post is made
     
 # Class to test login handler
 
