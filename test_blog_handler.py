@@ -17,7 +17,6 @@ import blog_utilities as util
 
 class TestBlog(unittest.TestCase):
 
-
     def setUp(self):
         self.testbed = testbed.Testbed()
         self.testbed.activate()
@@ -26,12 +25,34 @@ class TestBlog(unittest.TestCase):
         ndb.get_context().set_cache_policy(False)
 #         print os.environ['APPLICATION_ID']
 
-
     def tearDown(self):
         self.testbed.deactivate()
         
     def _setPostResponse(self, postDict, headersList=None):
         return blog.app.get_response(blog.SIGNUP, POST = postDict, 
+                                     headers=headersList)
+    @classmethod    
+    def _createDummyUser(cls, username, password):
+        '''
+        Create a dummy user account for testing.
+        '''
+        return blog.User.create_new_user({blog.USER : username,
+                              blog.PASSWORD : password})
+    
+    @classmethod        
+    def _createDummyPost(cls, username, subject, content):
+        '''
+        Creates a dummy blog post to test comment feature on.
+        @param username is the username that will have a cookie set to be
+        logged in
+        @param subject and @param content are the subject and content of the
+        new post.
+        '''
+        postDict = {blog.SUBJECT : subject, 
+                    blog.CONTENT : content}
+        headersList = [("Cookie", 
+                        util.CookieUtil._format_cookie(blog.USER, username))]
+        return blog.app.get_response(blog.NEWPOST, POST = postDict, 
                                      headers=headersList)
 
 class TestSignupInputVerification(TestBlog):
@@ -161,7 +182,7 @@ class TestNewPost(TestBlog):
         # Post 1 
         response = self.setPostRequest("test_username", "test_subject", 
                                        "")
-        self.assertTrue("Your post must have content." in response.body,
+        self.assertTrue("You must include some content." in response.body,
                         "No content error msg should be in response body.")
     
     # Test no user logged in
@@ -189,6 +210,93 @@ class TestNewPost(TestBlog):
 # Class to test logout handler
 
 # Class to test comment handler and database correctness
+class TestComments(TestBlog):
+    # set post request helper method (similar to TestNewPosts)
+    P_AUTHOR = "post_author"
+    C_AUTHOR = "comment_author"
+    
+    def setUpTest(self):
+        # set dummy post author
+        self._createDummyUser(self.P_AUTHOR, "test_password")
+        # set dummy post
+        self._createDummyPost(self.P_AUTHOR, "test_subject", "test_content")
+        # set comment author
+        self._createDummyUser(self.C_AUTHOR, "test_password2")
+        
+    def _setPostRequest(self, author, content, post_key):
+        '''
+        Method that sets the response to test. 
+        author - post's author as a string, comes from a cookie
+        content - content of the comment, as a string
+        '''
+        postDict = {blog.CONTENT : content}
+        headersList = [("Cookie", 
+                        util.CookieUtil._format_cookie(blog.USER, author))]
+        return blog.app.get_response("/blog/post_id/" + post_key + "/comment", 
+                                     POST = postDict, 
+                                     headers=headersList)
+    
+    def testNewCommentDBCorrectness(self):
+        '''
+        Tests correctly adding a new comment to a post. 
+        Checks correctness of DB after adding the new comment.
+        '''
+        self.setUpTest()
+        # there is only 1 blog post, so it's 1 by default
+        post_key = ndb.Key("User", self.P_AUTHOR, "BlogPost", "1")
+        # set post response
+        self._setPostRequest(self.C_AUTHOR, "comment_content",
+                             post_key.urlsafe())
+        new_comment_key = blog.Comment.get_comment_key("1", post_key)
+        new_comment = new_comment_key.get()
+                                                       
+        self.assertEqual(new_comment.content, "comment_content",
+                         "New Comment Content is not corrent, was " +
+                         new_comment.content + " but should have been" +
+                         " 'comment_content'")
+        
+        self._setPostRequest(self.C_AUTHOR, "2nd comment_content", 
+                             post_key.urlsafe())
+        
+        new_comment2 = blog.Comment.get_comment_key("2", post_key).get()
+        self.assertEqual(new_comment2.content, "2nd comment_content",
+                         "New Comment Content is not corrent, was " +
+                         new_comment.content + " but should have been" +
+                         " '2nd comment_content'")
+        self.assertEqual(post_key.get().num_comments, 2)
+        self._setPostRequest(self.C_AUTHOR, "3d comment_content", 
+                             post_key.urlsafe())
+        self.assertEqual(post_key.get().num_comments, 3)
+        
+    
+    def testInputVerification(self):
+        self.setUpTest()
+        # there is only 1 blog post, so it's 1 by default
+        post_key = ndb.Key("User", self.P_AUTHOR, "BlogPost", "1")
+        # set post response
+        response  = self._setPostRequest(self.C_AUTHOR, "",
+                                        post_key.urlsafe())
+        self.assertTrue("You must include some content." in response.body,
+                        "Test should raise missing content error msg.")
+        
+        
+    
+    def testNoUserLoggedIn(self):
+        # test what happens when a user is not logged in
+        self.setUpTest()
+        post_key = ndb.Key("User", self.P_AUTHOR, "BlogPost", "1").urlsafe()
+        response = blog.app.get_response("/blog/post_id/" + post_key + 
+                                         "/comment")
+        self.assertEqual(response.location, "http://localhost/blog/signup",
+                   "failure to be signed in did not redirect correctly (get)")
+    
+    def testRendering(self):
+        # Test the rending of a page after making a comment
+        pass
+    
+    def testDeleteComment(self):
+        # Implement this next round
+        pass
 
 # Class to test post liking
         
