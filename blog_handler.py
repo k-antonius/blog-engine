@@ -22,6 +22,7 @@ POST_ONLY_TEMPLATE = "new_post_display.html"
 SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
+COMMENT_TEMPLATE = "new_comment.html"
 
 # URI Routes
 HOME = "/blog"
@@ -30,6 +31,8 @@ SIGNUP = HOME + "/signup"
 WELCOME = HOME + "/user_welcome"
 LOGIN =  HOME + "/login"
 LOGOUT = HOME + "/logout"
+POSTDISPLAY = r"/blog/post_id/(\w+-\w+|\w+)"
+NEWCOMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment"
 
 # Form Input Fields
 USER = "username"
@@ -168,6 +171,7 @@ class BlogPost(ndb.Model):
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
     num_likes = ndb.IntegerProperty()
+    num_comments = ndb.IntegerProperty()
     
     
     @classmethod
@@ -191,16 +195,61 @@ class BlogPost(ndb.Model):
        
         return new_post_key
     
+    @classmethod
+    def increment_num_comments(cls, post_entity):
+        '''
+        Increments the number of comments on this post. The number of 
+        comments of a post is also the id of a given child comment entity.
+        '''
+        if post_entity.num_comments:
+            post_entity.num_comments += 1
+        else:
+            post_entity.num_comments = 1
+        post_entity.put()
+        return post_entity.num_comments
+    
+    @classmethod 
+    def get_post_key(cls, user_name, post_id):
+        '''
+        Returns the key object of a post entity given its author and int id.
+        '''
+        pass 
+    
 class Comment(ndb.Model):
     '''
     Parent is the blog post.
     '''
-    comment_body = ndb.TextProperty(required = True)
+    content = ndb.TextProperty(required = True)
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
     author = ndb.StringProperty(required = True)
     num_likes = ndb.IntegerProperty()
     
+    @classmethod
+    def create_new_comment(cls, user_name, url_string, form_data):
+        '''
+        Creates a new comment for a specific post.
+        user_name - user making the comment
+        post_id - id of blog post user is commenting on
+        form_data - dictionary of data from post response
+        '''
+        parent_key = ndb.Key(urlsafe=url_string)
+        parent_post = parent_key.get()
+        new_comment = Comment(content = form_data.get(CONTENT),
+                              author = user_name,
+                              parent = parent_key)
+        comment_num = BlogPost.increment_num_comments(parent_post)
+        new_comment.key = ndb.Key("Comment", str(comment_num), parent=parent_key)
+        new_comment.put()
+        return new_comment.key
+        
+    @classmethod
+    def get_comment_key(cls, comment_num, post_key):
+        '''
+        Returns the key object of a given comment, given its ancestor path
+        ids.
+        '''
+        return ndb.Key("Comment", str(comment_num), parent=post_key)                      
 
 class BlogMainPage(Handler):
     def get(self):
@@ -229,12 +278,12 @@ class NewPost(Handler):
                                                SUBJECT, CONTENT)
             if valid_data:
                 new_post_key = BlogPost.create_new_post(user_name, valid_data)
-                self.redirect('/blog/post_id/' + str(new_post_key.urlsafe()))
+                self.redirect('/blog/post_id/' + new_post_key.urlsafe())
     
         
 class NewPostDisplay(Handler):
-    def get(self, blog_post_id):
-        current_blog_post_key = ndb.Key(urlsafe=blog_post_id)
+    def get(self, *args):
+        current_blog_post_key = ndb.Key(urlsafe=args[0])
         current_blog_post = current_blog_post_key.get()
         current_title = current_blog_post.post_subject
         current_body = current_blog_post.post_content
@@ -268,6 +317,41 @@ class Signup(Handler):
             form_data[USER + ERROR] = ("User already exists. Please" +
                                        " choose another user name.")
             self.render(SIGNUP_TEMPLATE, **form_data)
+
+class NewComment(Handler):
+    '''
+    Handles new comment requests.
+    '''
+    def get(self, *args):
+        '''
+        Renders the new comment html.
+        '''
+        # need to make a form using the post static html as a base
+        self.render(COMMENT_TEMPLATE)
+        self._check_logged_in(SIGNUP)
+    
+    def post(self, *args):
+        '''
+        Handles form submission of new comment.
+        '''
+#         print arg
+        user_name = self._check_logged_in(SIGNUP)
+        if user_name:
+            valid_data = self._validate_user_input(COMMENT_TEMPLATE, CONTENT)
+            if valid_data:
+#                 uri = self.request.path
+#                 uri = uri.split("/")
+#                 print uri
+#                 
+#                 assert uri[1] == "blog" and uri[1] == "post_id", ("URI in new " +
+#                 "comment not as expected. First entry was " + uri[0] + " and" +
+#                 " second was " + uri[1])
+                post_key_string = args[0]
+                new_comment_key = Comment.create_new_comment(user_name,
+                                                             post_key_string,
+                                                             valid_data)
+                self.redirect('/blog/post_id/' + post_key_string)
+                                                             
     
 class Welcome(Handler):
     def get(self):
@@ -280,6 +364,7 @@ class Welcome(Handler):
                 
 class Login(Handler):
     def get(self):
+        self._check_logged_in(WELCOME)
         self.render(LOGIN_TEMPLATE)
     
     def post(self):
@@ -341,7 +426,7 @@ class FormHelper(object):
                         EMAIL : "Invalid email address.",
                         SUBJECT : "You must have a subject of less than" 
                                    + "100 chars in length.",
-                        CONTENT: "Your post must have content."
+                        CONTENT: "You must include some content."
                         }
         self.valid_input = True
         self._handler = handler
@@ -377,7 +462,8 @@ class FormHelper(object):
         
 app = webapp2.WSGIApplication([(HOME, BlogMainPage),
                                (NEWPOST, NewPost),
-                               (r"/blog/post_id/(\w+-\w+)", NewPostDisplay),
+                               (POSTDISPLAY, NewPostDisplay),
+                               (NEWCOMMENT, NewComment),
                                (SIGNUP, Signup),
                                (WELCOME, Welcome),
                                (LOGIN, Login),
