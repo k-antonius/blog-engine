@@ -115,9 +115,7 @@ class User(ndb.Model):
         # ensure the user is in the data base
         # check the password matches the password in the database
         # set the cookie for the user logged in
-        if cls.already_exists(form_data.get(USER)):
-            return None
-        else :
+        if not cls.already_exists(form_data.get(USER)):
             new_user = User(user_name = form_data.get(USER), 
                             password = form_data.get(PASSWORD), 
                             email= form_data.get(EMAIL), 
@@ -129,13 +127,12 @@ class User(ndb.Model):
     @classmethod
     def already_exists(cls, user_name):
         '''
-        Checks the database to see whether the user exists. Returns true if 
-        is does, false otherwise.
+        Checks the database to see whether the user exists.
+        @param user_name: the string to check
+        @return: the user entity or None if no such user exists 
         '''
-        if cls.get_by_id(user_name):
-            return True
-        else:
-            return False
+        return cls.get_by_id(user_name)
+        
     
     @classmethod
     def increment_num_posts(cls, user_name):
@@ -334,18 +331,10 @@ class NewComment(Handler):
         '''
         Handles form submission of new comment.
         '''
-#         print arg
         user_name = self._check_logged_in(SIGNUP)
         if user_name:
             valid_data = self._validate_user_input(COMMENT_TEMPLATE, CONTENT)
             if valid_data:
-#                 uri = self.request.path
-#                 uri = uri.split("/")
-#                 print uri
-#                 
-#                 assert uri[1] == "blog" and uri[1] == "post_id", ("URI in new " +
-#                 "comment not as expected. First entry was " + uri[0] + " and" +
-#                 " second was " + uri[1])
                 post_key_string = args[0]
                 new_comment_key = Comment.create_new_comment(user_name,
                                                              post_key_string,
@@ -364,40 +353,60 @@ class Welcome(Handler):
                 
 class Login(Handler):
     def get(self):
+        '''
+        Renders the login page. If a user is already logged in, redirects to
+        the welcome page.
+        '''
         self._check_logged_in(WELCOME)
         self.render(LOGIN_TEMPLATE)
     
     def post(self):
-        # These should be removed now
-        form_fields = ["username",
-                            "password"]
-        regex_map = {"username" : r"^[a-zA-Z0-9_-]{3,20}$",
-                          "password" : r"^.{3,20}$"}
-        error_map = {"username" : "Please enter a username.",
-                     "password" : "Please enter a password."}
-        helper = FormInputHelper(form_fields, regex_map, error_map, self)
-        to_render = helper.process_form_input()
-        if not helper.valid_input:
-            self.render(LOGIN_TEMPLATE, **to_render)
+        '''
+        Receives data input into login form. Verifies that input against
+        regular expressions and then the database. Redirects the user to
+        the welcome page if login was successful.
+        '''
+        valid_form_data = self._validate_user_input(LOGIN_TEMPLATE,
+                                                    USER, PASSWORD)
+        current_user = self._check_username(valid_form_data)
+        if self._check_password(valid_form_data, current_user.password):
+            CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
+            self.redirect(WELCOME)
+    
+    def _check_username(self, form_data):
+        '''
+        Checks to make sure a user with the username input exists. If not
+        re-renders the page with an error message. Returns the user entity
+        from the database to use with password checking.
+        @param form_data: dictionary containing data from input form
+        @return: the user entity
+        '''
+        user_entity = User.already_exists(form_data.get(USER))
+        if user_entity:
+            return user_entity
         else:
-            current_user = User.get_by_id(to_render.get("username"))
-            if current_user:
-                current_user_pwd = current_user.password
-                pwd_helper = PwdUtil(to_render.get("password"),
-                                     current_user_pwd) 
-                if pwd_helper.verify_password():
-                    cookie_helper = CookieUtil(self)
-                    cookie_helper.set_cookie("name", to_render.get("username"))
-                    self.redirect("/blog/welcome")
-                else:
-                    to_render["password_error"] = "Incorrect password."
-                    self.render(LOGIN_TEMPLATE, **to_render)
-            else:
-                to_render["username_error"] = "That user does not exist."
-                self.render(LOGIN_TEMPLATE, **to_render)
+            form_data["username_error"] = "That user does not exist."
+            self.render(LOGIN_TEMPLATE, form_data)
+            
+    def _check_password(self, form_data, db_password):
+        '''
+        Checks to make sure form password matches database password.
+        Re-renders the form if it is not correct with error msg.
+        @param form_data: the data from the input form
+        @param db_password: the password for the current user from the database
+        '''
+        pwd_helper = PwdUtil(form_data.get(PASSWORD), db_password)
+        if pwd_helper.verify_password():
+            return True
+        else:
+            form_data["password_error"] = "Incorrect password."
+            self.render(LOGIN_TEMPLATE, form_data)
                 
 class Logout(Handler):
     def get(self):
+        '''
+        Logs the user out and redirects to the signup page.
+        '''
         cookie_helper = CookieUtil(self)
         cookie_helper.set_cookie("name", "")
         self.redirect("/blog/signup")
