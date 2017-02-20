@@ -1,0 +1,15 @@
+{% extends "new_post_base.html" %}
+
+{% block content %}
+
+=============
+{{username}}:
+=============
+
+<form method ="post">
+  <h2>New Comment</h2>
+<textarea name="content">{{content}}</textarea>{{content_error}}<br>
+<input type="submit">
+</form>
+
+{% endblock %}
