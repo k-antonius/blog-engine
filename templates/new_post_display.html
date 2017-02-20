@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+{% extends "new_post_base.html" %}
 
-<html>
-<head>
-	<title>New Blog Post</title>
-</head>
-<body>
-    <div>{{subject}}</div>
-    <div>{{content}}</div>
-</body>
-</html>
+{% block content %}
+
+=============
+{{username}}:
+=============
+
+
+
+{% endblock %}
