@@ -10,6 +10,7 @@ import jinja2
 import webapp2
 from google.appengine.ext import ndb
 from blog_utilities import CookieUtil, PwdUtil
+from google.appengine.ext.datastore_admin.config import current
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
@@ -48,9 +49,9 @@ class Handler(webapp2.RequestHandler):
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
         
-    def render_str(self, *a, **kw):
-        t = JINJA.get_template(*a)
-        return t.render(**kw)
+    def render_str(self, a, **kw):
+        t = JINJA.get_template(a)
+        return t.render(kw)
     
     def render(self, *a, **kw):
         self.write(self.render_str(*a, **kw))
@@ -383,39 +384,19 @@ class Login(Handler):
         '''
         valid_form_data = self._validate_user_input(LOGIN_TEMPLATE,
                                                     USER, PASSWORD)
-        current_user = self._check_username(valid_form_data)
-        if self._check_password(valid_form_data, current_user.password):
-            CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-            self.redirect(WELCOME)
-    
-    def _check_username(self, form_data):
-        '''
-        Checks to make sure a user with the username input exists. If not
-        re-renders the page with an error message. Returns the user entity
-        from the database to use with password checking.
-        @param form_data: dictionary containing data from input form
-        @return: the user entity
-        '''
-        user_entity = User.already_exists(form_data.get(USER))
-        if user_entity:
-            return user_entity
+        current_user = User.already_exists(valid_form_data.get(USER))
+        if current_user:
+            pwd_helper = PwdUtil(valid_form_data.get(PASSWORD), 
+                                 current_user.password)
+            if pwd_helper.verify_password():
+                CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
+                self.redirect(WELCOME)
+            else:
+                valid_form_data["password_error"] = "Incorrect password."
+                self.render(LOGIN_TEMPLATE, **valid_form_data)
         else:
-            form_data["username_error"] = "That user does not exist."
-            self.render(LOGIN_TEMPLATE, form_data)
-            
-    def _check_password(self, form_data, db_password):
-        '''
-        Checks to make sure form password matches database password.
-        Re-renders the form if it is not correct with error msg.
-        @param form_data: the data from the input form
-        @param db_password: the password for the current user from the database
-        '''
-        pwd_helper = PwdUtil(form_data.get(PASSWORD), db_password)
-        if pwd_helper.verify_password():
-            return True
-        else:
-            form_data["password_error"] = "Incorrect password."
-            self.render(LOGIN_TEMPLATE, form_data)
+            valid_form_data["username_error"] = "That user does not exist."
+            self.render(LOGIN_TEMPLATE, **valid_form_data)
                 
 class Logout(Handler):
     def get(self):
