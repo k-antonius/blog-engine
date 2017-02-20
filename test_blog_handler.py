@@ -14,6 +14,8 @@ import webapp2
 import blog_handler as blog
 import blog_utilities as util
 import blog_handler
+from google.appengine.ext.db import SelfReference
+from cherrypy import response
 
 
 class TestBlog(unittest.TestCase):
@@ -100,6 +102,20 @@ class TestSignupInputVerification(TestBlog):
         self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
                    "successful signup did not redirect to welcome page." +
                    " Location was " + response.location)
+    
+    def testUserAlreadyExists(self):
+        '''
+        Tests attempting to create a new user when that user already exists.
+        '''
+        self._createDummyUser("alreadyExists", "12345")
+        response = self._setPostResponse({blog.USER : "alreadyExists",
+                                          blog.PASSWORD : "12345",
+                                          blog.PWD_VERIFY: "12345"})
+        self.assertTrue("User already exists. Please choose another user name" 
+                       in response.body, "Error msg for attempting to create" +
+                       " a user with a duplicate username is incorrect." +
+                       " The body of the response was:" + response.body)
+        
 
 class TestNewPost(TestBlog):
     
@@ -323,6 +339,10 @@ class testLoginLogout(TestBlog):
     
     # test successful login
     def testLogin(self):
+        '''
+        Test vanilla login with correct username and password.
+        Make sure page redirects correctly.
+        '''
         self._createDummyUser(self.REALUSER, self.ACTUALPWD)
         response = self._setPostRequest(self.REALUSER, self.ACTUALPWD)
         self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
@@ -330,6 +350,17 @@ class testLoginLogout(TestBlog):
                    " Location was " + response.location)
     
     # test login with incorrect username
+    def testBagLogin(self):
+        '''
+        Test login with incorrect username. Make sure correct error msg
+        is displayed.
+        '''
+        self._createDummyUser(self.REALUSER, self.ACTUALPWD)
+        response = self._setPostRequest(self.FAKEUSER, self.ACTUALPWD)
+        self.assertTrue("That user does not exist." in response.body,
+                        "Error message did not render correctly for bad " + 
+                        "username. Rendered body was: " + response.body)
+        
     
     # test login with incorrect password
     
