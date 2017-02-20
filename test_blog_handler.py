@@ -363,10 +363,24 @@ class testLoginLogout(TestBlog):
         
     
     # test login with incorrect password
+    def testLoginBadPassword(self):
+        '''
+        Tests the result of loggin in with the incorrect password for a given
+        username.
+        '''
+        self._createDummyUser(self.REALUSER, self.ACTUALPWD)
+        response = self._setPostRequest(self.REALUSER, "wrong_password")
+        self.assertTrue("Incorrect password." in response.body,
+                        "Error message did not render correctly for bad " +
+                        "password. Rendered body was: " + response.body)
     
     # test entering garbage into the form fields
     
     # test reaching login page while being logged in
+    
+    # test logging out when logged in
+    
+    # test logging out when already logged out
     
     
     
