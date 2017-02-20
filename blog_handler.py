@@ -112,7 +112,6 @@ class User(ndb.Model):
         @param email - optional email address
         '''
         if not cls.already_exists(form_data.get(USER)):
-            # need to hash and salt password
             secured_pwd = cls.secure_password(form_data.get(PASSWORD))
             new_user = User(user_name = form_data.get(USER), 
                             password = secured_pwd, 
@@ -365,7 +364,8 @@ class Login(Handler):
         Renders the login page. If a user is already logged in, redirects to
         the welcome page.
         '''
-        self._check_logged_in(WELCOME)
+        if CookieUtil.get_cookie(USER, self):
+            self.redirect(WELCOME)
         self.render(LOGIN_TEMPLATE)
     
     def post(self):
@@ -415,7 +415,7 @@ class Logout(Handler):
         '''
         Logs the user out and redirects to the signup page.
         '''
-        CookieUtil.set_cookie(USER, "")
+        CookieUtil.set_cookie(USER, "", self)
         self.redirect(SIGNUP)
         
 class FormHelper(object):
