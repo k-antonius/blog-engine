@@ -13,6 +13,7 @@ import webapp2
 
 import blog_handler as blog
 import blog_utilities as util
+import blog_handler
 
 
 class TestBlog(unittest.TestCase):
@@ -97,7 +98,8 @@ class TestSignupInputVerification(TestBlog):
         self.assertTrue(util.CookieUtil._hash("friend") in 
                                             response.headers.get("Set-Cookie"))
         self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
-                   "successful signup did not redirect to welcome page.")
+                   "successful signup did not redirect to welcome page." +
+                   " Location was " + response.location)
 
 class TestNewPost(TestBlog):
     
@@ -299,6 +301,63 @@ class TestComments(TestBlog):
         pass
 
 # Class to test post liking
+
+class testLoginLogout(TestBlog):
+    '''
+    Class to test logging in and out.
+    '''
+    REALUSER = "realuser"
+    FAKEUSER = "fakeuser"
+    ACTUALPWD = "12345"
+    
+    def _setPostRequest(self, username, password):
+        '''
+        Sets up a POST request via the login form and generates a response.
+        Tests in this class check the correctness of the response.
+        @param username: the username to enter into the login form
+        @param password: the password to enter into the login form
+        '''
+        
+        postDict = {blog.USER : username, blog.PASSWORD : password}
+        return blog.app.get_response(blog.LOGIN, POST = postDict)
+    
+    # test successful login
+    def testLogin(self):
+        self._createDummyUser(self.REALUSER, self.ACTUALPWD)
+        response = self._setPostRequest(self.REALUSER, self.ACTUALPWD)
+        self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
+                   "successful signup did not redirect to welcome page." +
+                   " Location was " + response.location)
+    
+    # test login with incorrect username
+    
+    # test login with incorrect password
+    
+    # test entering garbage into the form fields
+    
+    # test reaching login page while being logged in
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
         
     
         
