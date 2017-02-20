@@ -111,10 +111,6 @@ class User(ndb.Model):
         @param password is a str -- the user's password.
         @param email - optional email address
         '''
-        
-        # ensure the user is in the data base
-        # check the password matches the password in the database
-        # set the cookie for the user logged in
         if not cls.already_exists(form_data.get(USER)):
             new_user = User(user_name = form_data.get(USER), 
                             password = form_data.get(PASSWORD), 
@@ -407,9 +403,8 @@ class Logout(Handler):
         '''
         Logs the user out and redirects to the signup page.
         '''
-        cookie_helper = CookieUtil(self)
-        cookie_helper.set_cookie("name", "")
-        self.redirect("/blog/signup")
+        CookieUtil.set_cookie(USER, "")
+        self.redirect(SIGNUP)
         
 class FormHelper(object):
     '''
