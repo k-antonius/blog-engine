@@ -295,32 +295,39 @@ class NewPostDisplay(Handler):
                     content=current_body)
         
 class Signup(Handler):
+    '''
+    Class to handle requests to sign up for a new account.
+    '''
 
     def get(self):
+        '''
+        Renders the template for signing up for a new account.
+        '''
+        # Add check for a logged in user and redirect.
         self.render(SIGNUP_TEMPLATE)
         
     def post(self):
+        '''
+        Receives and validates input from signup form.
+        If the visitor signing up for the first time chooses a user name that
+        already exists, an error message is generated.
+        Otherwise a new user account is created and the user is logged in and
+        directed to a welcome page.
+        '''
         valid_form_data = self._validate_user_input(SIGNUP_TEMPLATE,
                                                     USER, PASSWORD, PWD_VERIFY,
                                                     EMAIL)
         if valid_form_data:
-            self._check_user_exists(valid_form_data)
-            CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-            pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
-            valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
-            User.create_new_user(valid_form_data)
-            self.redirect(WELCOME)
-            
-    def _check_user_exists(self, form_data):
-        '''
-        Queries the database to see whether a user with the given username
-        exists. If it does it re-renders the page with an appropriate error
-        message.
-        '''
-        if User.already_exists(form_data.get(USER)):
-            form_data[USER + ERROR] = ("User already exists. Please" +
+            if User.already_exists(valid_form_data.get(USER)):
+                valid_form_data[USER + ERROR] = ("User already exists. Please" +
                                        " choose another user name.")
-            self.render(SIGNUP_TEMPLATE, **form_data)
+                self.render(SIGNUP_TEMPLATE, **valid_form_data)
+            else:
+                CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
+                pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
+                valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
+                User.create_new_user(valid_form_data)
+                self.redirect(WELCOME)
 
 class NewComment(Handler):
     '''
