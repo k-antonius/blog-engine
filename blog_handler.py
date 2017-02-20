@@ -48,9 +48,9 @@ class Handler(webapp2.RequestHandler):
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
         
-    def render_str(self, a, **kw):
-        t = JINJA.get_template(a)
-        return t.render(kw)
+    def render_str(self, *a, **kw):
+        t = JINJA.get_template(*a)
+        return t.render(**kw)
     
     def render(self, *a, **kw):
         self.write(self.render_str(*a, **kw))
@@ -112,8 +112,10 @@ class User(ndb.Model):
         @param email - optional email address
         '''
         if not cls.already_exists(form_data.get(USER)):
+            # need to hash and salt password
+            secured_pwd = cls.secure_password(form_data.get(PASSWORD))
             new_user = User(user_name = form_data.get(USER), 
-                            password = form_data.get(PASSWORD), 
+                            password = secured_pwd, 
                             email= form_data.get(EMAIL), 
                             id = form_data.get(USER),
                             num_posts = 0)
@@ -152,6 +154,16 @@ class User(ndb.Model):
         user_key = ndb.Key("User", user_name)
         user = user_key.get()
         return user.num_posts
+    
+    @classmethod
+    def secure_password(cls, clear_text):
+        '''
+        Returns a hashed and salted password for storing in database.
+        @param clear_text: the clear-text password to make secure
+        @return a secure password in the form "hasedpassword,salt"
+        '''
+        pwd_helper = PwdUtil(clear_text)
+        return pwd_helper.new_pwd_salt_pair()
 
 class BlogPost(ndb.Model):
     '''
