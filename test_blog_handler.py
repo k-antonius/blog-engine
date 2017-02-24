@@ -34,6 +34,14 @@ class TestBlog(unittest.TestCase):
     def _setPostResponse(self, postDict, headersList=None):
         return blog.app.get_response(blog.SIGNUP, POST = postDict, 
                                      headers=headersList)
+    def _testInResponseBody(self, stringToLookFor, response):
+        '''
+        Tests whether input string is contained in the body of the response.
+        @param stringToLookFor: The string to look for.
+        '''
+        self.assertTrue(stringToLookFor in response.body, stringToLookFor +
+                        " not present in response body: " + response.body)
+    
     @classmethod    
     def _createDummyUser(cls, username, password):
         '''
@@ -357,12 +365,8 @@ class testLoginLogout(TestBlog):
         '''
         self._createDummyUser(self.REALUSER, self.ACTUALPWD)
         response = self._setPostRequest(self.FAKEUSER, self.ACTUALPWD)
-        self.assertTrue("That user does not exist." in response.body,
-                        "Error message did not render correctly for bad " + 
-                        "username. Rendered body was: " + response.body)
-        
+        self._testInResponseBody("That user does not exist.", response)
     
-    # test login with incorrect password
     def testLoginBadPassword(self):
         '''
         Tests the result of loggin in with the incorrect password for a given
@@ -370,17 +374,44 @@ class testLoginLogout(TestBlog):
         '''
         self._createDummyUser(self.REALUSER, self.ACTUALPWD)
         response = self._setPostRequest(self.REALUSER, "wrong_password")
-        self.assertTrue("Incorrect password." in response.body,
-                        "Error message did not render correctly for bad " +
-                        "password. Rendered body was: " + response.body)
+        self._testInResponseBody("Incorrect password.", response)
     
-    # test entering garbage into the form fields
-    
-    # test reaching login page while being logged in
+    def testGarbageUsername(self):
+        '''
+        Tests a username that should be caught by regex input verification.
+        '''
+        response = self._setPostRequest("a", self.ACTUALPWD)
+        self._testInResponseBody("The username is invalid.", response)
+        
+    def testGarbagePassword(self):
+        '''
+        Tests a password that should be caught by regex input verification.
+        '''
+        response = self._setPostRequest(self.REALUSER, "a")
+        self._testInResponseBody("The password is invalid.", response)
     
     # test logging out when logged in
+    def testLogout(self):
+        '''
+        Tests logging out a logged in user.
+        '''
+        headerList = [("Cookie",
+                       util.CookieUtil._format_cookie(blog.USER, self.REALUSER)
+                       )]
+        response = blog.app.get_response(blog.LOGOUT, headers=headerList)
+        self.assertEqual(response.location, "http://localhost" + blog.SIGNUP,
+                   "successful logout did not redirect to signup page." +
+                   " Location was " + response.location)
     
     # test logging out when already logged out
+    def testLogoutWhileLoggedOut(self):
+        '''
+        Test effect of logging out while not logged in.
+        '''
+        response = blog.app.get_response(blog.LOGOUT)
+        self.assertEqual(response.location, "http://localhost" + blog.SIGNUP,
+                   "successful logout did not redirect to signup page." +
+                   " Location was " + response.location)
     
     
     
