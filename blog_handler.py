@@ -384,19 +384,20 @@ class Login(Handler):
         '''
         valid_form_data = self._validate_user_input(LOGIN_TEMPLATE,
                                                     USER, PASSWORD)
-        current_user = User.already_exists(valid_form_data.get(USER))
-        if current_user:
-            pwd_helper = PwdUtil(valid_form_data.get(PASSWORD), 
-                                 current_user.password)
-            if pwd_helper.verify_password():
-                CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-                self.redirect(WELCOME)
+        if valid_form_data:
+            current_user = User.already_exists(valid_form_data.get(USER))
+            if current_user:
+                pwd_helper = PwdUtil(valid_form_data.get(PASSWORD), 
+                                     current_user.password)
+                if pwd_helper.verify_password():
+                    CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
+                    self.redirect(WELCOME)
+                else:
+                    valid_form_data["password_error"] = "Incorrect password."
+                    self.render(LOGIN_TEMPLATE, **valid_form_data)
             else:
-                valid_form_data["password_error"] = "Incorrect password."
+                valid_form_data["username_error"] = "That user does not exist."
                 self.render(LOGIN_TEMPLATE, **valid_form_data)
-        else:
-            valid_form_data["username_error"] = "That user does not exist."
-            self.render(LOGIN_TEMPLATE, **valid_form_data)
                 
 class Logout(Handler):
     def get(self):
