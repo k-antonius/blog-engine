@@ -175,7 +175,7 @@ class BlogPost(ndb.Model):
     post_number = ndb.IntegerProperty()
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
-    num_likes = ndb.IntegerProperty()
+    users_liked = ndb.StringProperty(repeated=True)
     num_comments = ndb.IntegerProperty()
     
     
@@ -196,6 +196,7 @@ class BlogPost(ndb.Model):
                             parent = ndb.Key("User", user_name))
         new_post.post_number = post_number
         new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
+        new_post.users_liked = []
         new_post_key = new_post.put()
        
         return new_post_key
@@ -218,7 +219,18 @@ class BlogPost(ndb.Model):
         '''
         Returns the key object of a post entity given its author and int id.
         '''
-        pass 
+        pass
+    
+    @classmethod
+    def add_like(cls, post_entity, user_name):
+        '''
+        Adds a user to the list of users who have liked this post.
+        Throws an exception if the user is already in this list.
+        '''
+        assert User.already_exists(user_name) != None, ("User attempting to" +
+                                    "like does not exist. Was: " + user_name)
+        post.users_liked.apppend(user_name)
+        post.put()
     
 class Comment(ndb.Model):
     '''
