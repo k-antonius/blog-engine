@@ -323,6 +323,11 @@ class TestComments(TestBlog):
     def testDeleteComment(self):
         # Implement this next round
         pass
+    
+    def testNumComments(self):
+        # test after delete is implemented
+        # test for db correctness after adding and deleting various comments
+        pass
 
 # Class to test post liking
 
