@@ -1,11 +1,14 @@
 {% extends "new_post_base.html" %}
 
 {% block content %}
-
-=============
-{{username}}:
-=============
-
-
-
+<h2>Comments</h2>
+{% for comment in all_comments.run() %}
+  <div>=============</div>
+  {{comment.author}}:
+  <br>
+  On: {{comment.date_created}}
+  <div>=============</div>
+  {{comment.content}}
+  <div>=============</div>
+{% endfor %}
 {% endblock %}
