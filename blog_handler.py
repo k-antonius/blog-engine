@@ -228,6 +228,8 @@ class BlogPost(ndb.Model):
         '''
         Adds a user to the list of users who have liked this post.
         Throws an exception if the user is already in this list.
+        @param post_entity: the post being liked
+        @param user_name: the user liking the post
         '''
         assert User.already_exists(user_name) != None, ("User attempting to" +
                                     "like does not exist. Was: " + user_name)
