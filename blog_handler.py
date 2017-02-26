@@ -77,19 +77,47 @@ class Handler(webapp2.RequestHandler):
         else:
             return logged_in_user
             
-    def _validate_user_input(self, template, *args):
+    def _validate_user_input(self, *args):
         '''
         Checks that user input into the form is valid. If it is not,
         generates suitable error messages and re-renders the page. If valid,
         returns the data input into the form in a dict keyed to the global
         constants.
+        @param args: the names of the form fields that need verifying.
         '''
         form_helper = FormHelper(self)
         form_data = form_helper.validate_form_data(args)
         if not form_helper.valid_input:
-            self.render(template, **form_data)
+            return False, form_data
         else:
-            return form_data     
+            return True, form_data
+    
+    def _was_valid(self, form_tuple):
+        '''
+        Helper method to determine whether processed form data was valid.
+        Takes a tuple of length 2 where element 0 is a boolean. 
+        Returns the value of that boolean.
+        '''
+        return form_tuple[0]
+    
+    def _get_form_data(self, form_tuple):
+        '''
+        Helper method to get form data back from form processor.
+        Takes a tuple of length 2 where element 1 is a dictionary.
+        Returns the dictionary.
+        '''
+        return form_tuple[1]
+    
+    def get_cur_post(self, post_string):
+        '''
+        Returns a blog post entity.
+        @param post_string: the url-safe post key string
+        @param username: the post-author's username
+        '''
+        current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
+        post = ndb.Key(urlsafe=post_string)
+        return post
+             
     
 class User(ndb.Model):
     '''
@@ -296,11 +324,13 @@ class NewPost(Handler):
         '''
         user_name = self._check_logged_in(SIGNUP)
         if user_name:
-            valid_data = self._validate_user_input(NEW_POST_TEMPLATE,
-                                               SUBJECT, CONTENT)
-            if valid_data:
-                new_post_key = BlogPost.create_new_post(user_name, valid_data)
+            valid_data = self._validate_user_input(SUBJECT, CONTENT)
+            if self._was_valid(valid_data):
+                new_post_key = BlogPost.create_new_post(user_name, 
+                                                        self._get_form_data(valid_data))
                 self.redirect('/blog/post_id/' + new_post_key.urlsafe())
+            else:
+                self.render(NEW_POST_TEMPLATE, **self._get_form_data(valid_data))
     
         
 class BlogPostDisplay(Handler):
@@ -345,10 +375,11 @@ class Signup(Handler):
         Otherwise a new user account is created and the user is logged in and
         directed to a welcome page.
         '''
-        valid_form_data = self._validate_user_input(SIGNUP_TEMPLATE,
-                                                    USER, PASSWORD, PWD_VERIFY,
+        form_data = self._validate_user_input(USER, PASSWORD, PWD_VERIFY,
                                                     EMAIL)
-        if valid_form_data:
+        
+        if self._was_valid(form_data):
+            valid_form_data = self._get_form_data(form_data)
             if User.already_exists(valid_form_data.get(USER)):
                 valid_form_data[USER + ERROR] = ("User already exists. Please" +
                                        " choose another user name.")
@@ -359,6 +390,8 @@ class Signup(Handler):
                 valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
                 User.create_new_user(valid_form_data)
                 self.redirect(WELCOME)
+        else:
+            self.render(SIGNUP_TEMPLATE, **self._get_form_data(form_data))
 
 class NewComment(Handler):
     '''
@@ -379,13 +412,17 @@ class NewComment(Handler):
         '''
         user_name = self._check_logged_in(SIGNUP)
         if user_name:
-            valid_data = self._validate_user_input(COMMENT_TEMPLATE, CONTENT)
-            if valid_data:
+            valid_data = self._validate_user_input(CONTENT)
+            if self._was_valid(valid_data):
                 post_key_string = args[0]
                 new_comment_key = Comment.create_new_comment(user_name,
                                                              post_key_string,
-                                                             valid_data)
+                                                             self._get_form_data(valid_data))
                 self.redirect('/blog/post_id/' + post_key_string)
+            else:
+                to_render = self._get_form_data(valid_data)
+                to_render["current_post"] = self.get_cur_post(args[0])
+                self.render(COMMENT_TEMPLATE, **to_render)
                                                              
     
 class Welcome(Handler):
@@ -413,9 +450,9 @@ class Login(Handler):
         regular expressions and then the database. Redirects the user to
         the welcome page if login was successful.
         '''
-        valid_form_data = self._validate_user_input(LOGIN_TEMPLATE,
-                                                    USER, PASSWORD)
-        if valid_form_data:
+        form_data = self._validate_user_input(USER, PASSWORD)
+        if self._was_valid(form_data):
+            valid_form_data = self._get_form_data(form_data)
             current_user = User.already_exists(valid_form_data.get(USER))
             if current_user:
                 pwd_helper = PwdUtil(valid_form_data.get(PASSWORD), 
@@ -429,6 +466,8 @@ class Login(Handler):
             else:
                 valid_form_data["username_error"] = "That user does not exist."
                 self.render(LOGIN_TEMPLATE, **valid_form_data)
+        else:
+            self.render(LOGIN_TEMPLATE, **self._get_form_data(form_data))
                 
 class Logout(Handler):
     def get(self):
