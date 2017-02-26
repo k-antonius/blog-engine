@@ -19,7 +19,8 @@ JINJA = jinja2.Environment(loader = jinja2.FileSystemLoader(TEMPLATE_DIR),
 # HTML Filenames
 MAIN_PAGE_TEMPLATE = "blog.html"
 NEW_POST_TEMPLATE = "newpost.html"
-POST_ONLY_TEMPLATE = "new_post_display.html"
+POST_ONLY_TEMPLATE = "new_post_base.html"
+POST_WITH_COMMENTS = "new_post_with_comments.html"
 SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
@@ -197,6 +198,7 @@ class BlogPost(ndb.Model):
         new_post.post_number = post_number
         new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
         new_post.users_liked = []
+        new_post.num_comments = 0
         new_post_key = new_post.put()
        
         return new_post_key
@@ -270,6 +272,7 @@ class Comment(ndb.Model):
 
 class BlogMainPage(Handler):
     def get(self):
+        
         all_posts = BlogPost.all()
         all_posts.order('date_created')
         self.render(MAIN_PAGE_TEMPLATE, blog_posts = all_posts)
@@ -299,13 +302,22 @@ class NewPost(Handler):
     
         
 class NewPostDisplay(Handler):
-    def get(self, *args):
-        current_blog_post_key = ndb.Key(urlsafe=args[0])
+    def get(self, post_id):
+        current_blog_post_key = ndb.Key(urlsafe=post_id)
         current_blog_post = current_blog_post_key.get()
         current_title = current_blog_post.post_subject
         current_body = current_blog_post.post_content
-        self.render(POST_ONLY_TEMPLATE, subject=current_title, 
-                    content=current_body)
+        print post_id
+        comment_url = post_id + "/comment"
+        if current_blog_post.num_comments == 0:
+            self.render(POST_ONLY_TEMPLATE, current_post=current_blog_post,
+                        comment_link=comment_url)
+        else:
+            comments_query = Comment.query(ancestor=current_blog_post_key)
+            comments = comments_query.order(-Comment.date_created).fetch()
+            self.render(POST_WITH_COMMENTS, all_comments=comments,
+                        current_post = current_blog_post, 
+                        comment_link=comment_url)
         
 class Signup(Handler):
     '''
@@ -346,12 +358,14 @@ class NewComment(Handler):
     '''
     Handles new comment requests.
     '''
-    def get(self, *args):
+    def get(self, post_key):
         '''
         Renders the new comment html.
         '''
-        # need to make a form using the post static html as a base
-        self.render(COMMENT_TEMPLATE)
+        # render the page witht the subject, content of the post
+        current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
+        post = ndb.Key(urlsafe=post_key)
+        self.render(COMMENT_TEMPLATE, current_post=post.get())
         self._check_logged_in(SIGNUP)
     
     def post(self, *args):
