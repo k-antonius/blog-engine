@@ -5,8 +5,8 @@
 	<title>New Blog Post</title>
 </head>
 <body>
-    <div>{{subject}}</div>
-    <div>{{content}}</div>
+    <div>{{current_post.post_subject}} <a href={{comment_link}}>Comment on this Post</a></div>
+    <div>{{current_post.post_content}}</div>
 		<div id="comment">
 			{% block content %}
 			{% endblock %}
