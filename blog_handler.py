@@ -303,14 +303,15 @@ class NewPost(Handler):
                 self.redirect('/blog/post_id/' + new_post_key.urlsafe())
     
         
-class NewPostDisplay(Handler):
+class BlogPostDisplay(Handler):
     def get(self, post_id):
+        '''
+        Renders an individual blog post an all comments made on that post.
+        '''
         current_blog_post_key = ndb.Key(urlsafe=post_id)
         current_blog_post = current_blog_post_key.get()
-        current_title = current_blog_post.post_subject
-        current_body = current_blog_post.post_content
-        print post_id
         comment_url = post_id + "/comment"
+        
         if current_blog_post.num_comments == 0:
             self.render(POST_ONLY_TEMPLATE, current_post=current_blog_post,
                         comment_link=comment_url)
@@ -320,6 +321,9 @@ class NewPostDisplay(Handler):
             self.render(POST_WITH_COMMENTS, all_comments=comments,
                         current_post = current_blog_post, 
                         comment_link=comment_url)
+            
+    def post(self, post_id):
+        pass
         
 class Signup(Handler):
     '''
@@ -364,11 +368,10 @@ class NewComment(Handler):
         '''
         Renders the new comment html.
         '''
-        # render the page witht the subject, content of the post
-        current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
-        post = ndb.Key(urlsafe=post_key)
-        self.render(COMMENT_TEMPLATE, current_post=post.get())
-        self._check_logged_in(SIGNUP)
+        if self._check_logged_in(SIGNUP):
+            current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
+            post = ndb.Key(urlsafe=post_key)
+            self.render(COMMENT_TEMPLATE, current_post=post.get())
     
     def post(self, *args):
         '''
@@ -495,7 +498,7 @@ class FormHelper(object):
         
 app = webapp2.WSGIApplication([(HOME, BlogMainPage),
                                (NEWPOST, NewPost),
-                               (POSTDISPLAY, NewPostDisplay),
+                               (POSTDISPLAY, BlogPostDisplay),
                                (NEWCOMMENT, NewComment),
                                (SIGNUP, Signup),
                                (WELCOME, Welcome),
