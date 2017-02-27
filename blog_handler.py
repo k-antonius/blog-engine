@@ -76,6 +76,25 @@ class Handler(webapp2.RequestHandler):
             self.redirect(route)
         else:
             return logged_in_user
+        
+    def logged_in(self):
+        '''
+        Returns true if a user is logged in, false otherwise
+        '''
+        if CookieUtil.get_cookie(USER, self):
+            return True
+        else:
+            return False
+        
+    def logged_in_user(self):
+        '''
+        Returns the user currently logged in.
+        '''
+        user = CookieUtil.get_cookie(USER, self)
+        assert (user, "Attempted to retrieve a logged in user where" +
+                " none was logged in.")
+        return user
+        
             
     def _validate_user_input(self, *args):
         '''
@@ -110,14 +129,83 @@ class Handler(webapp2.RequestHandler):
     
     def get_cur_post(self, post_string):
         '''
-        Returns a blog post entity.
+        Returns a blog post entity from url-safe string.
         @param post_string: the url-safe post key string
         @param username: the post-author's username
         '''
         current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
         post = ndb.Key(urlsafe=post_string)
         return post
-             
+    
+    def update_like(self):
+        '''
+        Receives a post request and likes/unlikes a blogpost.
+        '''
+        to_render = {}
+        like_tuple = self.get_like_id_pair()
+        author = like_tuple[0]
+        post_num = like_tuple[1]
+        cur_user = self.logged_in_user()
+        
+        if not self.logged_in():
+            to_render["like_error"] = "You must be logged in to like a post."
+        elif cur_user == author:
+            to_render["like_error"] = "You cannot like your own post."
+        else:
+            cur_post = ndb.Key("User", author, "BlogPost", post_num).get()
+            cur_like_value = self.get_like_value()
+            assert (BlogPost.validate_like(cur_post, cur_user, cur_like_value),
+                    "Like status in html and database were inconsistent.")
+            BlogPost.add_like_unlike(cur_post, cur_user, cur_like_value)
+            to_render["like_text"] = self.rev_like_value(cur_like_value)
+            
+        return to_render
+            
+    def rev_like_value(self, cur_like_value):
+        '''
+        Returns a string that is the opposite of the current "like" status,
+        e.g. if "Like" is input, returns "Unlike."
+        '''
+        assert (cur_like_value == "Like" or cur_like_value == "Unlike",
+                "Impossible value for cur_like_value, was " + cur_like_value)
+        if cur_like_value == "Like":
+            return "Unlike"
+        else:
+            return "Like"
+        
+    def like_button_text(self, like_value):
+        '''
+        Returns a string for like button.
+        @param like_value: boolean value whether post has been liked
+        @return: "Like" or "Unlike" string literal
+        '''
+        if like_value:
+            return "Unlike"
+        else:
+            return "Like"
+        
+    def get_like_id_pair(self):
+        '''
+        Extracts the name of the like button sending the POST request.
+        @return: tuple of strings in the format (username, postnumber)
+        '''
+        post_dict = self.request.POST.items()
+        assert ((len(post_dict) == 1), "POST multidict was " +
+                "wrong length: " + str(post_dict))
+        id_string = post_dict[0][0] # POST from like has 1 key/value
+        slice_idx = id_string.find("|")
+        return str(id_string[:slice_idx]), str(id_string[slice_idx + 1:])
+    
+    def get_like_value(self):
+        '''
+        Gets the value of the like button from the post request.
+        '''
+        post_dict = self.request.POST.items()
+        assert ((len(post_dict) == 1), "POST multidict was " +
+                "wrong length: " + str(post_dict))
+        id_string = post_dict[0][0]
+        return self.request.get(id_string)
+        
     
 class User(ndb.Model):
     '''
@@ -252,18 +340,44 @@ class BlogPost(ndb.Model):
         pass
     
     @classmethod
-    def add_like(cls, post_entity, user_name):
+    def add_like_unlike(cls, post_entity, user_name, like_status):
         '''
         Adds a user to the list of users who have liked this post.
         Throws an exception if the user is already in this list.
         @param post_entity: the post being liked
         @param user_name: the user liking the post
         '''
-        assert User.already_exists(user_name) != None, ("User attempting to" +
-                                    "like does not exist. Was: " + user_name)
-        post.users_liked.apppend(user_name)
-        post.put()
+        if like_status == "Like":
+            post_entity.users_liked.apppend(user_name)
+        else:
+            post_entity.users_liked.remove(user_name)
+        post_entity.put()
+        
+    @classmethod
+    def already_liked(cls, post_entity, user_name):
+        '''
+        Returns boolean value whether given user has liked a blog post.
+        @param post_entity: the subject post
+        @param user_name: the user to test
+        '''
+        return user_name in post_entity.users_liked
     
+    @classmethod
+    def validate_like(cls, post_entity, user_name, like_request):
+        '''
+        Returns a boolean value based on whether the current like request
+        is consistent with the database.
+        @param post_entity: the post being liked/unliked
+        @param user_name: the user attempting to like the post
+        @param like_request: a string, like or unlike request
+        @return: True if the request matches the database, 
+        '''
+        return ((self.already_liked(post_entity, user_name) and 
+                 like_request == "Like")
+                or
+                (not self.already_liked(post_entity, user_name) and 
+                 like_request == "Unlike"))
+
 class Comment(ndb.Model):
     '''
     Parent is the blog post.
@@ -338,22 +452,40 @@ class BlogPostDisplay(Handler):
         '''
         Renders an individual blog post an all comments made on that post.
         '''
-        current_blog_post_key = ndb.Key(urlsafe=post_id)
-        current_blog_post = current_blog_post_key.get()
+        current_blog_post = self.get_cur_post(post_id)
         comment_url = post_id + "/comment"
+         # set button_name, like_text which are based on state of 
+        # blog post entity
+        b_name = (current_blog_post.post_author + "|" + 
+                  str(current_blog_post.post_number))
+        l_value = BlogPost.already_liked(current_blog_post, 
+                                    CookieUtil.get_cookie(USER, self))
+        l_text = self.like_button_text(l_value)
+        
         
         if current_blog_post.num_comments == 0:
             self.render(POST_ONLY_TEMPLATE, current_post=current_blog_post,
-                        comment_link=comment_url)
+                        comment_link=comment_url,
+                        button_name= b_name,
+                        like_text =l_text,
+                        like_value=l_value)
         else:
             comments_query = Comment.query(ancestor=current_blog_post_key)
             comments = comments_query.order(-Comment.date_created).fetch()
             self.render(POST_WITH_COMMENTS, all_comments=comments,
                         current_post = current_blog_post, 
-                        comment_link=comment_url)
+                        comment_link=comment_url,
+                        button_name= b_name,
+                        like_text =l_text,
+                        like_value=l_value)
             
     def post(self, post_id):
-        pass
+        '''
+        Handles like and unliking of an individual post.
+        '''
+        to_render = self.update_like()
+        self.render()
+        
         
 class Signup(Handler):
     '''
