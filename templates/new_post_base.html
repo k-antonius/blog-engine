@@ -7,6 +7,11 @@
 <body>
     <div>{{current_post.post_subject}} <a href={{comment_link}}>Comment on this Post</a></div>
     <div>{{current_post.post_content}}</div>
+    <div>
+      <form method="post">
+        <button name="{{button_name}}" type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
+      </form>
+    </div>
 		<div id="comment">
 			{% block content %}
 			{% endblock %}
