@@ -129,13 +129,11 @@ class Handler(webapp2.RequestHandler):
     
     def get_cur_post(self, post_string):
         '''
-        Returns a blog post entity from url-safe string.
+        Returns a blog post ENTITY from url-safe string.
         @param post_string: the url-safe post key string
         @param username: the post-author's username
         '''
-        current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
-        post = ndb.Key(urlsafe=post_string)
-        return post
+        return ndb.Key(urlsafe=post_string).get()
     
     def update_like(self):
         '''
@@ -452,12 +450,13 @@ class BlogPostDisplay(Handler):
         '''
         Renders an individual blog post an all comments made on that post.
         '''
+        # insight of the a.m. - add things every post needs to the database 
+        
         current_blog_post = self.get_cur_post(post_id)
-        comment_url = post_id + "/comment"
+        comment_url = self.gen_comment_uri(post_id)
          # set button_name, like_text which are based on state of 
         # blog post entity
-        b_name = (current_blog_post.post_author + "|" + 
-                  str(current_blog_post.post_number))
+        b_name = self.setup_button_id(current_blog_post)
         l_value = BlogPost.already_liked(current_blog_post, 
                                     CookieUtil.get_cookie(USER, self))
         l_text = self.like_button_text(l_value)
@@ -470,14 +469,31 @@ class BlogPostDisplay(Handler):
                         like_text =l_text,
                         like_value=l_value)
         else:
+            # move to Comment class
             comments_query = Comment.query(ancestor=current_blog_post_key)
             comments = comments_query.order(-Comment.date_created).fetch()
+            # end move
             self.render(POST_WITH_COMMENTS, all_comments=comments,
                         current_post = current_blog_post, 
                         comment_link=comment_url,
                         button_name= b_name,
                         like_text =l_text,
                         like_value=l_value)
+    
+    def setup_button_id(self, post_entity):
+        '''
+        Sets the button name based on the current post. Button name is in the 
+        format "author|post_number."
+        '''
+        return (post_entity.post_author + "|" + str(post_entity.post_number))
+    
+    def gen_comment_uri(self, post_key_string):
+        '''
+        Returns a comment URI for linking to comment page.
+        @param post_key_string: the url safe key string for a post
+        '''
+        return post_id + "/comment"
+    
             
     def post(self, post_id):
         '''
