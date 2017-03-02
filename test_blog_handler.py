@@ -160,7 +160,7 @@ class TestNewPost(TestBlog):
         self.assertEqual(post1.post_subject, "test_subject")
         self.assertEqual(post1.post_content, "test_content")
         self.assertEqual(post1.post_author, "test_username")
-        self.assertEqual(post1.post_number, 1)
+        self.assertEqual(post1.post_number, "1")
         self.assertEqual(response.location, "http://localhost/blog/post_id/" +
                          str(post1Key.urlsafe()), "new post not redirecting to" + 
                          "static link page properly. Location was " + 
@@ -177,7 +177,7 @@ class TestNewPost(TestBlog):
         self.assertEqual(post1.post_subject, "test_subject2")
         self.assertEqual(post1.post_content, "test_content2")
         self.assertEqual(post1.post_author, "test_username")
-        self.assertEqual(post1.post_number, 2)
+        self.assertEqual(post1.post_number, "2")
         
     # Test empty subject and subject too long
     def testNewPostBadSubject(self):
