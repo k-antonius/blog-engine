@@ -135,27 +135,26 @@ class Handler(webapp2.RequestHandler):
         '''
         return ndb.Key(urlsafe=post_string).get()
     
-    def update_like(self):
+    def update_like(self, post_entity):
         '''
         Receives a post request and likes/unlikes a blogpost.
+        @param post_entity: the BlogPost entity to update
+        @return: a mapping of template variable to an error message or
+        string value for like button.
         '''
         to_render = {}
-        like_tuple = self.get_like_id_pair()
-        author = like_tuple[0]
-        post_num = like_tuple[1]
-        cur_user = self.logged_in_user()
-        
         if not self.logged_in():
-            to_render["like_error"] = "You must be logged in to like a post."
-        elif cur_user == author:
-            to_render["like_error"] = "You cannot like your own post."
+            to_render["like_error"] = ("You must be logged in to like or " +
+                                       "unlike a post.")
+            # issue like text ALWAYS needs to be set, as this is done currently
         else:
-            cur_post = ndb.Key("User", author, "BlogPost", post_num).get()
-            cur_like_value = self.get_like_value()
-            assert (BlogPost.validate_like(cur_post, cur_user, cur_like_value),
-                    "Like status in html and database were inconsistent.")
-            BlogPost.add_like_unlike(cur_post, cur_user, cur_like_value)
-            to_render["like_text"] = self.rev_like_value(cur_like_value)
+            cur_user = self.logged_in_user()
+            if cur_user == post_entity.post_author:
+                to_render["like_error"] = "You cannot like your own post."
+            else:
+                cur_like_value = self.gen_like_text(post_entity)
+                BlogPost.add_like_unlike(post_entity, cur_user, cur_like_value)
+                to_render["like_text"] = self.rev_like_value(cur_like_value)
             
         return to_render
             
@@ -181,28 +180,20 @@ class Handler(webapp2.RequestHandler):
             return "Unlike"
         else:
             return "Like"
-        
-    def get_like_id_pair(self):
-        '''
-        Extracts the name of the like button sending the POST request.
-        @return: tuple of strings in the format (username, postnumber)
-        '''
-        post_dict = self.request.POST.items()
-        assert ((len(post_dict) == 1), "POST multidict was " +
-                "wrong length: " + str(post_dict))
-        id_string = post_dict[0][0] # POST from like has 1 key/value
-        slice_idx = id_string.find("|")
-        return str(id_string[:slice_idx]), str(id_string[slice_idx + 1:])
     
-    def get_like_value(self):
+    def gen_like_text(self, post_entity):
         '''
-        Gets the value of the like button from the post request.
+        Returns the proper string, "Like" or "Unlike" based on whether the
+        user logged in has like a given post.
+        @param post_entity: the subject BlogPost entity
+        @return: string literal "Like" if the logged in user has not liked 
+        this post yet, or if no user is logged in, otherwise string literal
+        "Unlike."
         '''
-        post_dict = self.request.POST.items()
-        assert ((len(post_dict) == 1), "POST multidict was " +
-                "wrong length: " + str(post_dict))
-        id_string = post_dict[0][0]
-        return self.request.get(id_string)
+        if self.logged_in():
+            if BlogPost.already_liked(post_entity, self.logged_in_user()):
+                return "Unlike"
+        return "Like"
         
     
 class User(ndb.Model):
@@ -287,7 +278,7 @@ class BlogPost(ndb.Model):
     post_subject = ndb.StringProperty(required = True)
     post_content = ndb.TextProperty(required = True)
     post_author = ndb.StringProperty(required = True)
-    post_number = ndb.IntegerProperty()
+    post_number = ndb.StringProperty()
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
     users_liked = ndb.StringProperty(repeated=True)
@@ -304,13 +295,13 @@ class BlogPost(ndb.Model):
         An ndb User entity is the parent of every post.
         '''
         
-        post_number = User.increment_num_posts(user_name)
+        post_number = str(User.increment_num_posts(user_name))
         new_post = BlogPost(post_subject = form_data.get(SUBJECT),
                             post_content = form_data.get(CONTENT),
                             post_author = user_name,
                             parent = ndb.Key("User", user_name))
         new_post.post_number = post_number
-        new_post.key = ndb.Key("User", user_name, "BlogPost", str(post_number))
+        new_post.key = ndb.Key("User", user_name, "BlogPost", post_number)
         new_post.users_liked = []
         new_post.num_comments = 0
         new_post_key = new_post.put()
@@ -356,25 +347,21 @@ class BlogPost(ndb.Model):
         '''
         Returns boolean value whether given user has liked a blog post.
         @param post_entity: the subject post
-        @param user_name: the user to test
+        @param user_name: the string username of the user entity to test
         '''
-        return user_name in post_entity.users_liked
-    
+        result = user_name in post_entity.users_liked
+        return result
+        
     @classmethod
-    def validate_like(cls, post_entity, user_name, like_request):
+    def get_all_comments(cls, post_entity):
         '''
-        Returns a boolean value based on whether the current like request
-        is consistent with the database.
-        @param post_entity: the post being liked/unliked
-        @param user_name: the user attempting to like the post
-        @param like_request: a string, like or unlike request
-        @return: True if the request matches the database, 
+        Returns a list of all the comments for a given post.
+        @param post_entity: the blog post entity to retreive comments for
+        @return: a list of Comment entities
         '''
-        return ((self.already_liked(post_entity, user_name) and 
-                 like_request == "Like")
-                or
-                (not self.already_liked(post_entity, user_name) and 
-                 like_request == "Unlike"))
+        comments_query = Comment.query(ancestor=post_entity.key)
+        all_comments = comments_query.order(-Comment.date_created).fetch()
+        return all_comments
 
 class Comment(ndb.Model):
     '''
@@ -410,9 +397,18 @@ class Comment(ndb.Model):
         Returns the key object of a given comment, given its ancestor path
         ids.
         '''
-        return ndb.Key("Comment", str(comment_num), parent=post_key)                      
+        return ndb.Key("Comment", str(comment_num), parent=post_key)
+    
+                          
 
 class BlogMainPage(Handler):
+    '''
+    Note on properly displaying like/unlike status of a given post:
+    Map url-safe entity key to "Like" or "Unlike" per status of that
+    post re: user or visitor. Then pass that map to the template.
+    Have the template retrieve the correct value and render based on the 
+    key of the current post. BAM.
+    '''
     def get(self):
         
         all_posts = BlogPost.all()
@@ -446,61 +442,45 @@ class NewPost(Handler):
     
         
 class BlogPostDisplay(Handler):
+    
     def get(self, post_id):
         '''
         Renders an individual blog post an all comments made on that post.
         '''
-        # insight of the a.m. - add things every post needs to the database 
-        
-        current_blog_post = self.get_cur_post(post_id)
-        comment_url = self.gen_comment_uri(post_id)
-         # set button_name, like_text which are based on state of 
-        # blog post entity
-        b_name = self.setup_button_id(current_blog_post)
-        l_value = BlogPost.already_liked(current_blog_post, 
-                                    CookieUtil.get_cookie(USER, self))
-        l_text = self.like_button_text(l_value)
-        
-        
-        if current_blog_post.num_comments == 0:
-            self.render(POST_ONLY_TEMPLATE, current_post=current_blog_post,
-                        comment_link=comment_url,
-                        button_name= b_name,
-                        like_text =l_text,
-                        like_value=l_value)
-        else:
-            # move to Comment class
-            comments_query = Comment.query(ancestor=current_blog_post_key)
-            comments = comments_query.order(-Comment.date_created).fetch()
-            # end move
-            self.render(POST_WITH_COMMENTS, all_comments=comments,
-                        current_post = current_blog_post, 
-                        comment_link=comment_url,
-                        button_name= b_name,
-                        like_text =l_text,
-                        like_value=l_value)
+        cur_post = self.get_cur_post(post_id)
+        self.render(self.choose_template(cur_post),
+                    current_post = cur_post,
+                    comment_link = self.gen_comment_uri(cur_post),
+                    like_text = self.gen_like_text(cur_post))
     
-    def setup_button_id(self, post_entity):
-        '''
-        Sets the button name based on the current post. Button name is in the 
-        format "author|post_number."
-        '''
-        return (post_entity.post_author + "|" + str(post_entity.post_number))
-    
-    def gen_comment_uri(self, post_key_string):
+    def gen_comment_uri(self, post_entity):
         '''
         Returns a comment URI for linking to comment page.
-        @param post_key_string: the url safe key string for a post
+        @param post_entity: the BlogPost entity to add comment to
+        @return: the string URI leading to the NewCommend handler
         '''
-        return post_id + "/comment"
+        return post_entity.key.urlsafe() + "/comment"
     
+    def choose_template(self, post_entity):
+        '''
+        Returns the proper template for rendering based on whether this post
+        has comments.
+        @param post_entity: the BlogPost entity to be rendered
+        '''
+        if post_entity.num_comments == 0:
+            return POST_ONLY_TEMPLATE
+        else:
+            return POST_WITH_COMMENTS
             
     def post(self, post_id):
         '''
         Handles like and unliking of an individual post.
         '''
-        to_render = self.update_like()
-        self.render()
+        cur_post = self.get_cur_post(post_id)
+        to_render = self.update_like(cur_post)
+        to_render["current_post"] = cur_post
+        to_render["comment_link"] = self.gen_comment_uri(cur_post)
+        self.render(self.choose_template(cur_post), **to_render)
         
         
 class Signup(Handler):
