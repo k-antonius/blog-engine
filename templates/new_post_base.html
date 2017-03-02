@@ -9,7 +9,8 @@
     <div>{{current_post.post_content}}</div>
     <div>
       <form method="post">
-        <button name="{{button_name}}" type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
+        <button name="{{current_post.key.urlsafe()}}"
+         type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
       </form>
     </div>
 		<div id="comment">
