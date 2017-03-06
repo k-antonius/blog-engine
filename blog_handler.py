@@ -142,19 +142,23 @@ class Handler(webapp2.RequestHandler):
         @return: a mapping of template variable to an error message or
         string value for like button.
         '''
+        LIKE_TEXT = "like_text"
+        LIKE_ERROR =  "like_error"
         to_render = {}
+        cur_like_value = self.gen_like_text(post_entity)
         if not self.logged_in():
-            to_render["like_error"] = ("You must be logged in to like or " +
+            to_render[LIKE_ERROR] = ("You must be logged in to like or " +
                                        "unlike a post.")
-            # issue like text ALWAYS needs to be set, as this is done currently
+            to_render[LIKE_TEXT] = cur_like_value
         else:
             cur_user = self.logged_in_user()
             if cur_user == post_entity.post_author:
-                to_render["like_error"] = "You cannot like your own post."
+                to_render[LIKE_ERROR] = "You cannot like your own post."
+                to_render[LIKE_TEXT] = cur_like_value
             else:
-                cur_like_value = self.gen_like_text(post_entity)
+                
                 BlogPost.add_like_unlike(post_entity, cur_user, cur_like_value)
-                to_render["like_text"] = self.rev_like_value(cur_like_value)
+                to_render[LIKE_TEXT] = self.rev_like_value(cur_like_value)
             
         return to_render
             
@@ -337,7 +341,7 @@ class BlogPost(ndb.Model):
         @param user_name: the user liking the post
         '''
         if like_status == "Like":
-            post_entity.users_liked.apppend(user_name)
+            post_entity.users_liked.append(user_name)
         else:
             post_entity.users_liked.remove(user_name)
         post_entity.put()
