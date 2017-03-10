@@ -417,7 +417,128 @@ class testLoginLogout(TestBlog):
         self.assertEqual(response.location, "http://localhost" + blog.SIGNUP,
                    "successful logout did not redirect to signup page." +
                    " Location was " + response.location)
+        
+class testLikeUnlike(TestBlog):
+    '''
+    Class of tests for liking and unliking posts.
+    '''
+    POST_AUTHOR = "p_author"
+    OTHER_USER = "other_user"
+    PASSWORD = "ttt"
     
+
+    def _setupTest(self):
+        '''
+        Set up mock user account for post author, make a mock post, and 
+        set up a mock user account for other.
+        '''
+        self._createDummyUser(self.POST_AUTHOR, self.PASSWORD)
+        self._createDummyUser(self.OTHER_USER, self.PASSWORD)
+        self._createDummyPost(self.POST_AUTHOR, "mock subject", "mock_content")
+        
+    def _getMockPostKeyStr(self):
+        '''
+        Returns the mock post's ndb Key object in url safe key string format. 
+        '''
+        return ndb.Key("User", self.POST_AUTHOR, "BlogPost", "1").urlsafe()
+    
+    def _get_MockPostEntity(self):
+        '''
+        Returns the mock post entity. Assumes there is only 1 mock post.
+        '''
+        return ndb.Key(urlsafe=self._getMockPostKeyStr()).get()
+        
+    def _setLikeResponse(self, liking_user, login_user=True):
+        '''
+        Generates an appropriate like response from the application.
+        @param liking_user: the string username of the user liking the post
+        @param login_user: defaults to True, will log in the liking user. Set
+        to false to test the application with a logged out liking user.
+        '''
+        headerList = []
+        if login_user:
+            headerList = [("Cookie",
+                       util.CookieUtil._format_cookie(blog.USER, liking_user))]
+        post_key = self._getMockPostKeyStr()
+        return blog.app.get_response("/blog/post_id/" + post_key, 
+                                     headers=headerList,
+                                     POST={})
+    
+    def testLikeVanilla(self):
+        '''
+        Liking user is logged in, post is not liking user's post, post is yet
+        to be liked by the liking user.
+        '''
+        self._setupTest()
+        response = self._setLikeResponse(self.OTHER_USER)
+        # unlike should be in the response body
+        self.assertTrue("Unlike" in response.body, "Unlike is not present in" +
+                   " the body of the response. Response was:" + response.body)
+        # the post key should be in the response body
+        self.assertTrue(self._getMockPostKeyStr() in response.body, "Url safe key is" +
+                   " not present in the body of the response. Response was:" +
+                   response.body)
+        # other user should be in the post's users liked list
+        self.assertTrue(self.OTHER_USER in self._get_MockPostEntity().users_liked,
+                   "Liking user not present in list of users who have liked" +
+                   " post.")
+        
+    def testUnlikeVanilla(self):
+        '''
+        Liking user is logged in, post is not liking user's post, post has
+        been liked already by liking user.
+        '''
+        self._setupTest()
+        # like post
+        response = self._setLikeResponse(self.OTHER_USER)
+        self.assertTrue(self.OTHER_USER in self._get_MockPostEntity().users_liked,
+                   "Liking user not present in list of users who have liked" +
+                   " post.")
+        self.assertTrue("Unlike" in response.body, "Unlike is not present in" +
+                   " the body of the response. Response was:" + response.body)
+        # unlike post
+        response = self._setLikeResponse(self.OTHER_USER)
+        self.assertTrue(self.OTHER_USER not in self._get_MockPostEntity().users_liked,
+                   "Liking user should not be present in list of users who have liked" +
+                   " post.")
+        self.assertTrue("Like" in response.body, "Like is not present in" +
+                   " the body of the response. Response was:" + response.body)
+    
+    def testLikeOwnPost(self):
+        '''
+        Liking user is logged in, is post's author.
+        '''
+        ERROR_MSG = "You cannot like your own post."
+        self._setupTest()
+        response = self._setLikeResponse(self.POST_AUTHOR)
+        self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
+                        " for liking own post." + response.body)
+        self.assertTrue(self.POST_AUTHOR not in self._get_MockPostEntity().users_liked,
+                   "Liking user should not be present in list of users who have liked" +
+                   " post.")
+        
+    
+    # test for attempting to like post while logged in
+    def testLikeLoggedOut(self):
+        '''
+        Liking user is logged out. Liking user is not post author.
+        '''
+        ERROR_MSG = "You must be logged in to like or unlike a post."
+        self._setupTest()
+        response = self._setLikeResponse(self.OTHER_USER, False)
+        self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
+                        " for liking post while logged out." + response.body)
+        
+        response = self._setLikeResponse(self.POST_AUTHOR, False)
+        self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
+                        " for liking post while logged out." + response.body)
+        
+    
+    
+        
+    
+        
+        
     
     
     
