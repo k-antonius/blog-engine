@@ -418,6 +418,30 @@ class testLoginLogout(TestBlog):
                    "successful logout did not redirect to signup page." +
                    " Location was " + response.location)
         
+    def testLoginLogoutLogin(self):
+        '''
+        Test logging in, out, and back in.
+        '''
+        self._createDummyUser(self.REALUSER, self.ACTUALPWD)
+        response = self._setPostRequest(self.REALUSER, self.ACTUALPWD)
+        self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
+                   "successful signup did not redirect to welcome page." +
+                   " Location was " + response.location)
+        # logout
+        headerList = [("Cookie",
+                       util.CookieUtil._format_cookie(blog.USER, self.REALUSER)
+                       )]
+        response = blog.app.get_response(blog.LOGOUT, headers=headerList)
+        self.assertEqual(response.location, "http://localhost" + blog.SIGNUP,
+                   "successful logout did not redirect to signup page." +
+                   " Location was " + response.location)
+        # login
+        response = self._setPostRequest(self.REALUSER, self.ACTUALPWD)
+        self.assertEqual(response.location, "http://localhost" + blog.WELCOME,
+                   "successful signup did not redirect to welcome page." +
+                   " Location was " + response.location)
+        
+        
 class testLikeUnlike(TestBlog):
     '''
     Class of tests for liking and unliking posts.

@@ -1,12 +1,5 @@
-<!DOCTYPE html>
-
-<html>
-<head>
-	<title>Kenneth's Blog</title>
-</head>
-<h1>KENNETH'S BLOG</h1>
-<a href="/blog/new_post">Create New Blog Post</a>
-<body>
+{% extends "base.html" %}
+{% block content %}
 	{% for current_post in recent_blog_posts %}
   <div>__________________________________</div>
   <div><h3>{{current_post.post_subject}}</h3>
@@ -17,14 +10,13 @@
   <br>
   <div>
     <form method="post">
-      <button name="{{current_post.key.urlsafe()}}"
-       type="submit" value="{{button_data[current_post.key.urlsafe()]["like_text"]}}">
+      <button name="like_button"
+       type="submit" value="{{current_post.key.urlsafe()}}">
        {{button_data[current_post.key.urlsafe()]["like_text"]}}</button>
-       {{like_error}}
+       {{button_data[current_post.key.urlsafe()]["like_error"]}}
     </form>
   </div>
   <div>__________________________________</div>
   <br>
   {% endfor %}
-</body>
-</html>
+{% endblock %}

@@ -452,13 +452,15 @@ class BlogMainPage(Handler):
         '''
         LIKE_TEXT = "like_text"
         COMMENT_URI = "comment_uri"
+        LIKE_ERROR = "like_error"
         to_render = {}
         for post in posts_to_render:
             key_string = post.key.urlsafe()
             button_text = self.gen_like_text(post)
             uri_text = "/blog/post_id/" + self.gen_comment_uri(post)
             to_render[key_string] = {LIKE_TEXT : button_text,
-                               COMMENT_URI : uri_text}
+                               COMMENT_URI : uri_text,
+                               LIKE_ERROR : ""}
         return to_render
             
         
@@ -469,7 +471,15 @@ class BlogMainPage(Handler):
         - update using same method is in BlogPostDisplay
         - render page in same was as get method
         '''
-        pass
+        cur_post = self.get_cur_post(self.get_attribute("like_button"))
+        cur_post_button_info = self.update_like(cur_post)
+        cur_post_button_info["comment_uri"] = self.gen_comment_uri(cur_post)
+        recent_posts = BlogPost.most_recent_20()
+        buttons_info = self.setup_buttons(recent_posts)
+        buttons_info[cur_post.key.urlsafe()] = cur_post_button_info
+        self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
+                    button_data = buttons_info)
+                
 
 class NewPost(Handler):
     
