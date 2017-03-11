@@ -198,7 +198,14 @@ class Handler(webapp2.RequestHandler):
             if BlogPost.already_liked(post_entity, self.logged_in_user()):
                 return "Unlike"
         return "Like"
-        
+    
+    def gen_comment_uri(self, post_entity):
+        '''
+        Returns a comment URI for linking to comment page.
+        @param post_entity: the BlogPost entity to add comment to
+        @return: the string URI leading to the NewCommend handler
+        '''
+        return post_entity.key.urlsafe() + "/comment"
     
 class User(ndb.Model):
     '''
@@ -366,6 +373,16 @@ class BlogPost(ndb.Model):
         comments_query = Comment.query(ancestor=post_entity.key)
         all_comments = comments_query.order(-Comment.date_created).fetch()
         return all_comments
+    
+    @classmethod
+    def most_recent_20(cls):
+        '''
+        Returns up to the most recent 20 blog posts in descending order of
+        date created.
+        '''
+        posts_query = cls.query()
+        recent_posts = posts_query.order(-cls.date_created).fetch(20)
+        return recent_posts
 
 class Comment(ndb.Model):
     '''
@@ -414,10 +431,45 @@ class BlogMainPage(Handler):
     key of the current post. BAM.
     '''
     def get(self):
+        '''
+        - query 10 most recent posts
+        - for each post: determine like status, build comment URI
+        - render the page
+        '''
+        recent_posts = BlogPost.most_recent_20()
+        self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
+                    button_data = self.setup_buttons(recent_posts))
         
-        all_posts = BlogPost.all()
-        all_posts.order('date_created')
-        self.render(MAIN_PAGE_TEMPLATE, blog_posts = all_posts)
+    def setup_buttons(self, posts_to_render):
+        '''
+        Gathers information about like status, comment uri, and error message
+        status for each blog post that will be displayed and organizes the
+        information in a dictionary for retrieval in the template.
+        @param posts_to_render: list of post entity objects for rendering
+        @return: dictionary {post_entity : {"like_status" : "like/unlike",
+                                            "comment_uri" : the uri,
+                                            "error_msg" : "" or msg}} 
+        '''
+        LIKE_TEXT = "like_text"
+        COMMENT_URI = "comment_uri"
+        to_render = {}
+        for post in posts_to_render:
+            key_string = post.key.urlsafe()
+            button_text = self.gen_like_text(post)
+            uri_text = "/blog/post_id/" + self.gen_comment_uri(post)
+            to_render[key_string] = {LIKE_TEXT : button_text,
+                               COMMENT_URI : uri_text}
+        return to_render
+            
+        
+    def post(self):
+        '''
+        - only post request is a like/unlike
+        - determine which post is being liked/unliked
+        - update using same method is in BlogPostDisplay
+        - render page in same was as get method
+        '''
+        pass
 
 class NewPost(Handler):
     
@@ -457,13 +509,7 @@ class BlogPostDisplay(Handler):
                     comment_link = self.gen_comment_uri(cur_post),
                     like_text = self.gen_like_text(cur_post))
     
-    def gen_comment_uri(self, post_entity):
-        '''
-        Returns a comment URI for linking to comment page.
-        @param post_entity: the BlogPost entity to add comment to
-        @return: the string URI leading to the NewCommend handler
-        '''
-        return post_entity.key.urlsafe() + "/comment"
+    
     
     def choose_template(self, post_entity):
         '''
