@@ -557,8 +557,23 @@ class testLikeUnlike(TestBlog):
         self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
                         " for liking post while logged out." + response.body)
         
+class testPwdUtil(TestBlog):
+    '''
+    Tests the password utility functions.
+    '''
+    unicodePwd = u"abc123"
+    bytesPwd = "abc123"
     
-    
+    def testMixedUnicodeBytes(self):
+        '''
+        Tests mixed unicode and strings.
+        '''
+        pwd_helper = util.PwdUtil(self.unicodePwd)
+        db_password = pwd_helper.new_pwd_salt_pair()
+        self.assertTrue(type(db_password), "unicode")
+        
+        pwd_helper2 = util.PwdUtil(self.unicodePwd, db_password)
+        self.assertTrue(pwd_helper2.verify_password())
         
     
         
