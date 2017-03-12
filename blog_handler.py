@@ -574,8 +574,6 @@ class Signup(Handler):
                 self.render(SIGNUP_TEMPLATE, **valid_form_data)
             else:
                 CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-                pwd_helper = PwdUtil(valid_form_data.get(PASSWORD))
-                valid_form_data[PASSWORD] = pwd_helper.new_pwd_salt_pair()
                 User.create_new_user(valid_form_data)
                 self.redirect(WELCOME)
         else:
