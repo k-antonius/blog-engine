@@ -207,7 +207,71 @@ class Handler(webapp2.RequestHandler):
         @return: the string URI leading to the NewCommend handler
         '''
         return post_entity.key.urlsafe() + "/comment"
-
+    
+class HandlerHelper(object):
+    '''
+    A class that aggregates data about the state of a request handler.
+    '''
+    def __init__(self, handler, field_list, post_id=None):
+        self.handler = handler
+        self.is_logged_in = self._logged_in()
+        self.cur_user = self._logged_in_user()
+        self.cur_post = self._get_cur_post(post_id)
+        self.data_error_msgs = None
+        self.valid_data = None
+        self.is_data_valid = False
+        self._validate_user_input(field_list)
+        
+    def set_form_field(self, key, value):
+        '''
+        Include text for rendering in html template.
+        @params:
+            key - a form field name constant, defined globally
+            value - text to render in template
+        '''
+        self.valid_data[key] = value
+    
+    def _logged_in(self):
+        '''
+        Returns true if a user is logged in, false otherwise
+        '''
+        if CookieUtil.get_cookie(USER, self.handler):
+            return True
+        else:
+            return False
+        
+    def _logged_in_user(self):
+        '''
+        Returns the user currently logged in.
+        '''
+        return CookieUtil.get_cookie(USER, self.handler)
+    
+    def _get_cur_post(self, post_string):
+        '''
+        Returns a blog post ENTITY from url-safe string.
+        @param post_string: the url-safe post key string
+        @param username: the post-author's username
+        '''
+        if post_string:
+            return ndb.Key(urlsafe=post_string).get()
+        
+    def _validate_user_input(self, field_list):
+        '''
+        Checks that user input into the form is valid. Sets class fields
+        appropriately based on whether data was valid or invalid, using
+        error messages.
+        @param 
+            field_list: name of fields to process as global constants
+        '''
+        form_helper = FormHelper(self.handler)
+        form_data = form_helper.validate_form_data(field_list)
+        if not form_helper.valid_input:
+            self.data_error_msgs = form_data
+            self.is_data_valid = False
+        else:
+            self.valid_data = form_data
+            self.is_data_valid = True
+    
 class User(ndb.Model):
     '''
     This is a root entity.
@@ -505,7 +569,7 @@ class NewPost(Handler):
         Renders the new post form on an initial request.
         '''
         self.render(NEW_POST_TEMPLATE)
-        user_name = self._check_logged_in(SIGNUP)
+        self._check_logged_in(SIGNUP)
         
     def post(self):
         '''
@@ -513,15 +577,15 @@ class NewPost(Handler):
         adds a new entity to the database, storing the information from
         the new blog post.
         '''
-        user_name = self._check_logged_in(SIGNUP)
-        if user_name:
-            valid_data = self._validate_user_input(SUBJECT, CONTENT)
-            if self._was_valid(valid_data):
-                new_post_key = BlogPost.create_new_post(user_name, 
-                                                        self._get_form_data(valid_data))
-                self.redirect('/blog/post_id/' + new_post_key.urlsafe())
-            else:
-                self.render(NEW_POST_TEMPLATE, **self._get_form_data(valid_data))
+        helper = HandlerHelper(self, (SUBJECT, CONTENT))
+        if not helper.is_logged_in:
+            self.redirect(SIGNUP)
+        elif helper.is_data_valid:
+            new_post_key = BlogPost.create_new_post(helper.cur_user, 
+                                                    helper.valid_data)
+            self.redirect('/blog/post_id/' + new_post_key.urlsafe())
+        else:
+            self.render(NEW_POST_TEMPLATE, **helper.data_error_msgs)
     
         
 class BlogPostDisplay(Handler):
@@ -732,7 +796,7 @@ class FormHelper(object):
                         PASSWORD : "The password is invalid.",
                         PWD_VERIFY : "The passwords do not match.",
                         EMAIL : "Invalid email address.",
-                        SUBJECT : "You must have a subject of less than" 
+                        SUBJECT : "You must have a subject of less than " 
                                    + "100 chars in length.",
                         CONTENT: "You must include some content."
                         }

@@ -186,7 +186,7 @@ class TestNewPost(TestBlog):
         # Post 1 
         response = self.setPostRequest("test_username", "", 
                                        "test_content")
-        self.assertTrue("You must have a subject of less than" 
+        self.assertTrue("You must have a subject of less than " 
                         + "100 chars in length." in response.body, "subject" +
                         "error msg should be in body")
         
@@ -197,7 +197,7 @@ class TestNewPost(TestBlog):
                                        "123456789012345678901234567890" +
                                        "123456789012345678901234567890", 
                                        "test_content")
-        self.assertTrue("You must have a subject of less than" 
+        self.assertTrue("You must have a subject of less than " 
                         + "100 chars in length." in response.body, "subject" +
                         "error msg should be in body")
     
@@ -638,31 +638,6 @@ class testPostEditing(TestBlog):
         self.assertEqual(cur_post.post_subject, self.EDITED_SUBJECT)
         self.assertEqual(cur_post.post_content, self.EDITED_CONTENT)
         
-        
-    
-        
-        
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
         
     
         
