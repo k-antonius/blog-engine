@@ -4,6 +4,11 @@
       <a href={{comment_link}}>Comment on this Post</a></div>
     <div>{{current_post.post_content}}</div>
     <div>
+      <form method = "post">
+        <button name = "edit_button"
+          type="submit">Edit Post</button>{{edit_error}}
+    </div>
+    <div>
       <form method="post">
         <button name="{{current_post.key.urlsafe()}}"
          type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
