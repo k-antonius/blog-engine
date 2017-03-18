@@ -486,7 +486,8 @@ class testLikeUnlike(TestBlog):
         post_key = self._getMockPostKeyStr()
         return blog.app.get_response("/blog/post_id/" + post_key, 
                                      headers=headerList,
-                                     POST={})
+                                     POST={"like_button" :
+                                           "text"})
     
     def testLikeVanilla(self):
         '''
@@ -574,6 +575,69 @@ class testPwdUtil(TestBlog):
         
         pwd_helper2 = util.PwdUtil(self.unicodePwd, db_password)
         self.assertTrue(pwd_helper2.verify_password())
+        
+class testPostEditing(TestBlog):
+    '''
+    Class to test editing posts functionality.
+    '''
+    AUTHOR = "post_author"
+    SUBJECT = "test_subject"
+    CONTENT = "test_content"
+    PASSWORD = "some_pwd"
+    OTHER_USER = "other_user"
+    EDITED_CONTENT = CONTENT + "edited"
+    EDITED_SUBJECT = SUBJECT + "edited"
+    
+    def _setupTest(self):
+        '''
+        Set up mock user account for post author, make a mock post, and 
+        set up a mock user account for other.
+        '''
+        self._createDummyUser(self.AUTHOR, self.PASSWORD)
+        self._createDummyUser(self.OTHER_USER, self.PASSWORD)
+        self._createDummyPost(self.AUTHOR, self.SUBJECT, self.CONTENT)
+        
+    def _getMockPostKeyStr(self):
+        '''
+        Returns the mock post's ndb Key object in url safe key string format. 
+        '''
+        return ndb.Key("User", self.AUTHOR, "BlogPost", "1").urlsafe()
+    
+    def _get_MockPostEntity(self):
+        '''
+        Returns the mock post entity. Assumes there is only 1 mock post.
+        '''
+        return ndb.Key(urlsafe=self._getMockPostKeyStr()).get()
+    
+    
+    def setPostRequest(self, username, subject, content):
+        '''
+        Method that sets the response to test. 
+        @param username is the username that will have a cookie set to be
+        logged in
+        @param subject and @param content are the subject and content of the
+        new post.
+        '''
+        postDict = {blog.SUBJECT : subject, 
+                    blog.CONTENT : content}
+        headersList = [("Cookie", 
+                        util.CookieUtil._format_cookie(blog.USER, username))]
+        post_id = self._getMockPostKeyStr()
+        return blog.app.get_response("/blog/post_id/" + post_id + "/edit", 
+                                     POST = postDict, 
+                                     headers=headersList)
+    
+    def testVanillaEdit(self):
+        '''
+        Tests editing a post with the correct user and input.
+        '''
+        self._setupTest()
+        response = self.setPostRequest(self.AUTHOR, self.EDITED_SUBJECT, 
+                                       self.EDITED_CONTENT)
+        cur_post = self._get_MockPostEntity()
+        self.assertEqual(cur_post.post_subject, self.EDITED_SUBJECT)
+        self.assertEqual(cur_post.post_content, self.EDITED_CONTENT)
+        
         
     
         
