@@ -35,6 +35,7 @@ LOGIN =  HOME + "/login"
 LOGOUT = HOME + "/logout"
 POSTDISPLAY = r"/blog/post_id/(\w+-\w+|\w+)"
 NEWCOMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment"
+EDIT_POST = r"/blog/post_id/(\w+-\w+|\w+)/edit"
 
 # Form Input Fields
 USER = "username"
@@ -206,7 +207,7 @@ class Handler(webapp2.RequestHandler):
         @return: the string URI leading to the NewCommend handler
         '''
         return post_entity.key.urlsafe() + "/comment"
-    
+
 class User(ndb.Model):
     '''
     This is a root entity.
@@ -383,6 +384,22 @@ class BlogPost(ndb.Model):
         posts_query = cls.query()
         recent_posts = posts_query.order(-cls.date_created).fetch(20)
         return recent_posts
+    
+    @classmethod
+    def update_post(cls, post_entity, form_data):
+        '''
+        Updates the subject and content of a post upon editing.
+        @params:
+            post_entity - the the entity to be updated
+            form_data - the form data dictionary containing the new subject
+            and content
+        @return:
+            the post_entity with updated fields
+        '''
+        post_entity.post_subject = form_data[SUBJECT]
+        post_entity.post_content = form_data[CONTENT]
+        post_entity.put()
+        return post_entity
 
 class Comment(ndb.Model):
     '''
@@ -537,10 +554,40 @@ class BlogPostDisplay(Handler):
         Handles like and unliking of an individual post.
         '''
         cur_post = self.get_cur_post(post_id)
-        to_render = self.update_like(cur_post)
+        to_render = {}
+        if self.request.get("like_button"):
+            to_render = self.update_like(cur_post)
+            
+            # add login check
+        if self.request.get("edit_button"):
+            if self.logged_in_user() == cur_post.post_author:
+                self.redirect("/blog/post_id/" + post_id + "/edit")
+                return
+            else:
+                to_render["edit_error"] = "You can't edit another user's post."
+                to_render["like_text"] = self.gen_like_text(cur_post)
         to_render["current_post"] = cur_post
         to_render["comment_link"] = self.gen_comment_uri(cur_post)
         self.render(self.choose_template(cur_post), **to_render)
+            
+class EditPost(Handler):
+    def get(self, post_id):
+        cur_post = self.get_cur_post(post_id)
+        to_render = {}
+        to_render[SUBJECT] = cur_post.post_subject
+        to_render[CONTENT] = cur_post.post_content
+        self.render(NEW_POST_TEMPLATE, **to_render)
+        
+    def post(self, post_id):
+        cur_post = self.get_cur_post(post_id)
+        valid_data = self._validate_user_input(SUBJECT, CONTENT)
+        if self._was_valid(valid_data):
+            # code below belongs in BlogPost classmethod
+            BlogPost.update_post(cur_post, self._get_form_data(valid_data))
+            self.redirect("/blog/post_id/" + post_id)
+        else:
+            self.render(NEW_POST_TEMPLATE, **valid_data)
+            
         
         
 class Signup(Handler):
@@ -618,7 +665,7 @@ class Welcome(Handler):
             self.render(WELCOME_TEMPLATE, username = username)
         else:
             self.redirect(LOGIN) # Eventually change for to allow 
-                                         # for either signup or login
+                                    # for either signup or login
                 
 class Login(Handler):
     def get(self):
@@ -725,6 +772,7 @@ app = webapp2.WSGIApplication([(HOME, BlogMainPage),
                                (NEWPOST, NewPost),
                                (POSTDISPLAY, BlogPostDisplay),
                                (NEWCOMMENT, NewComment),
+                               (EDIT_POST, EditPost),
                                (SIGNUP, Signup),
                                (WELCOME, Welcome),
                                (LOGIN, Login),

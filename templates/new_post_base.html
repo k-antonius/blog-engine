@@ -5,12 +5,12 @@
     <div>{{current_post.post_content}}</div>
     <div>
       <form method = "post">
-        <button name = "edit_button"
+        <button name = "edit_button" value="edit"
           type="submit">Edit Post</button>{{edit_error}}
     </div>
     <div>
       <form method="post">
-        <button name="{{current_post.key.urlsafe()}}"
+        <button name="like_button"
          type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
       </form>
     </div>
