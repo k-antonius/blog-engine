@@ -230,6 +230,13 @@ class HandlerHelper(object):
             value - text to render in template
         '''
         self.valid_data[key] = value
+        
+    def valid_data_val(self, key):
+        '''
+        Returns the value from the valid_data dictionary for a given key.
+        Keys are the form field constants, defined globally.
+        '''
+        return self.valid_data[key]
     
     def _logged_in(self):
         '''
@@ -739,7 +746,8 @@ class Login(Handler):
         '''
         if CookieUtil.get_cookie(USER, self):
             self.redirect(WELCOME)
-        self.render(LOGIN_TEMPLATE)
+        else:
+            self.render(LOGIN_TEMPLATE)
     
     def post(self):
         '''
@@ -747,24 +755,23 @@ class Login(Handler):
         regular expressions and then the database. Redirects the user to
         the welcome page if login was successful.
         '''
-        form_data = self._validate_user_input(USER, PASSWORD)
-        if self._was_valid(form_data):
-            valid_form_data = self._get_form_data(form_data)
-            current_user = User.already_exists(valid_form_data.get(USER))
-            if current_user:
-                pwd_helper = PwdUtil(valid_form_data.get(PASSWORD), 
-                                     current_user.password)
-                if pwd_helper.verify_password():
-                    CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-                    self.redirect(WELCOME)
-                else:
-                    valid_form_data["password_error"] = "Incorrect password."
-                    self.render(LOGIN_TEMPLATE, **valid_form_data)
+        helper = HandlerHelper(self, (USER, PASSWORD))
+        if not helper.is_data_valid:
+            self.render(LOGIN_TEMPLATE, **helper.data_error_msgs)
+            return
+        user_entity = User.already_exists(helper.valid_data.get(USER))
+        if user_entity:
+            pwd_helper = PwdUtil(helper.valid_data_val(PASSWORD), 
+                                 user_entity.password)
+            if pwd_helper.verify_password():
+                CookieUtil.set_cookie(USER, helper.valid_data_val(USER), self)
+                self.redirect(WELCOME)
+                return
             else:
-                valid_form_data["username_error"] = "That user does not exist."
-                self.render(LOGIN_TEMPLATE, **valid_form_data)
+                helper.set_form_field(PASSWORD + ERROR, "Incorrect password.")
         else:
-            self.render(LOGIN_TEMPLATE, **self._get_form_data(form_data))
+            helper.set_form_field(USER + ERROR, "That user does not exist.")
+        self.render(LOGIN_TEMPLATE, **helper.valid_data)
                 
 class Logout(Handler):
     def get(self):
