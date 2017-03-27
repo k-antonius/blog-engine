@@ -218,7 +218,7 @@ class HandlerHelper(object):
         self.cur_user = self._logged_in_user()
         self.cur_post = self._get_cur_post(post_id)
         self.data_error_msgs = None
-        self.valid_data = None
+        self.valid_data = {}
         self.is_data_valid = False
         self._validate_user_input(field_list)
         
@@ -230,13 +230,6 @@ class HandlerHelper(object):
             value - text to render in template
         '''
         self.valid_data[key] = value
-        
-    def valid_data_val(self, key):
-        '''
-        Returns the value from the valid_data dictionary for a given key.
-        Keys are the form field constants, defined globally.
-        '''
-        return self.valid_data[key]
     
     def _logged_in(self):
         '''
@@ -278,6 +271,26 @@ class HandlerHelper(object):
         else:
             self.valid_data = form_data
             self.is_data_valid = True
+            
+    # add method to log user in
+    def login_user(self):
+        '''
+        Sets a cookie for the user name contained in the valid-data dictionary.
+        Will raise an exception if no username string is present.
+        '''
+        assert self.valid_data.get(USER)
+        CookieUtil.set_cookie(USER, self.valid_data.get(USER), self.handler)
+        
+    # add method to log user out
+    def validate_form_input(self, template):
+        '''
+        Checks the data input into the form for validity based on rules defined
+        in the Form Helper class. Re-renders the form with error messages using
+        the provided template.
+        @param template: the template to render error messages to
+        '''
+        if not self.is_data_valid:
+            self.handler.render(template, **self.data_error_msgs)
     
 class User(ndb.Model):
     '''
@@ -302,7 +315,7 @@ class User(ndb.Model):
         @param email - optional email address
         '''
         if not cls.already_exists(form_data.get(USER)):
-            secured_pwd = cls.secure_password(form_data.get(PASSWORD))
+            secured_pwd = cls._secure_password(form_data.get(PASSWORD))
             new_user = User(user_name = form_data.get(USER), 
                             password = secured_pwd, 
                             email= form_data.get(EMAIL), 
@@ -318,7 +331,10 @@ class User(ndb.Model):
         @param user_name: the string to check
         @return: the user entity or None if no such user exists 
         '''
-        return cls.get_by_id(user_name)
+        if user_name:
+            return cls.get_by_id(user_name)
+        else:
+            return None
         
     
     @classmethod
@@ -345,7 +361,7 @@ class User(ndb.Model):
         return user.num_posts
     
     @classmethod
-    def secure_password(cls, clear_text):
+    def _secure_password(cls, clear_text):
         '''
         Returns a hashed and salted password for storing in database.
         @param clear_text: the clear-text password to make secure
@@ -507,8 +523,6 @@ class Comment(ndb.Model):
         ids.
         '''
         return ndb.Key("Comment", str(comment_num), parent=post_key)
-    
-                          
 
 class BlogMainPage(Handler):
     '''
@@ -593,7 +607,6 @@ class NewPost(Handler):
             self.redirect('/blog/post_id/' + new_post_key.urlsafe())
         else:
             self.render(NEW_POST_TEMPLATE, **helper.data_error_msgs)
-    
         
 class BlogPostDisplay(Handler):
     
@@ -670,8 +683,11 @@ class Signup(Handler):
         '''
         Renders the template for signing up for a new account.
         '''
-        # Add check for a logged in user and redirect.
-        self.render(SIGNUP_TEMPLATE)
+        helper = HandlerHelper(self,(USER))
+        if helper.is_logged_in:
+            self.redirect(WELCOME)
+        else:
+            self.render(SIGNUP_TEMPLATE)
         
     def post(self):
         '''
@@ -681,21 +697,18 @@ class Signup(Handler):
         Otherwise a new user account is created and the user is logged in and
         directed to a welcome page.
         '''
-        form_data = self._validate_user_input(USER, PASSWORD, PWD_VERIFY,
-                                                    EMAIL)
+        helper = HandlerHelper(self, (USER, PASSWORD, PWD_VERIFY, EMAIL))
+        helper.validate_form_input(SIGNUP_TEMPLATE)
         
-        if self._was_valid(form_data):
-            valid_form_data = self._get_form_data(form_data)
-            if User.already_exists(valid_form_data.get(USER)):
-                valid_form_data[USER + ERROR] = ("User already exists. Please" +
-                                       " choose another user name.")
-                self.render(SIGNUP_TEMPLATE, **valid_form_data)
-            else:
-                CookieUtil.set_cookie(USER, valid_form_data.get(USER), self)
-                User.create_new_user(valid_form_data)
-                self.redirect(WELCOME)
-        else:
-            self.render(SIGNUP_TEMPLATE, **self._get_form_data(form_data))
+        user_entity = User.already_exists(helper.valid_data.get(USER))
+        if helper.is_data_valid and user_entity:
+            helper.set_form_field(USER + ERROR, "User already exists. Please" +
+                                  " choose another user name.")
+            self.render(SIGNUP_TEMPLATE, **helper.valid_data)
+        elif helper.is_data_valid:
+            helper.login_user()
+            User.create_new_user(helper.valid_data)
+            self.redirect(WELCOME)
 
 class NewComment(Handler):
     '''
@@ -727,7 +740,6 @@ class NewComment(Handler):
                 to_render = self._get_form_data(valid_data)
                 to_render["current_post"] = self.get_cur_post(args[0])
                 self.render(COMMENT_TEMPLATE, **to_render)
-                                                             
     
 class Welcome(Handler):
     def get(self):
@@ -735,8 +747,7 @@ class Welcome(Handler):
         if username:
             self.render(WELCOME_TEMPLATE, username = username)
         else:
-            self.redirect(LOGIN) # Eventually change for to allow 
-                                    # for either signup or login
+            self.redirect(LOGIN) 
                 
 class Login(Handler):
     def get(self):
@@ -761,10 +772,10 @@ class Login(Handler):
             return
         user_entity = User.already_exists(helper.valid_data.get(USER))
         if user_entity:
-            pwd_helper = PwdUtil(helper.valid_data_val(PASSWORD), 
+            pwd_helper = PwdUtil(helper.valid_data.get(PASSWORD), 
                                  user_entity.password)
             if pwd_helper.verify_password():
-                CookieUtil.set_cookie(USER, helper.valid_data_val(USER), self)
+                CookieUtil.set_cookie(USER, helper.valid_data.get(USER), self)
                 self.redirect(WELCOME)
                 return
             else:
