@@ -608,7 +608,7 @@ class NewPost(Handler):
         elif helper.is_data_valid:
             new_post_key = BlogPost.create_new_post(helper.cur_user, 
                                                     helper.valid_data)
-            self.redirect('/blog/post_id/' + new_post_key.urlsafe())
+            self.redirect(POST_ID + new_post_key.urlsafe())
         else:
             self.render(NEW_POST_TEMPLATE, **helper.data_error_msgs)
         
@@ -758,39 +758,40 @@ class Welcome(Handler):
             self.redirect(LOGIN)
                 
 class Login(Handler):
+    '''
+    Handles displaying and accepting input from the login form.
+    '''
     def get(self):
         '''
         Renders the login page. If a user is already logged in, redirects to
         the welcome page.
         '''
-        if CookieUtil.get_cookie(USER, self):
+        helper = HandlerHelper(self, ())
+        if helper.is_logged_in:
             self.redirect(WELCOME)
         else:
             self.render(LOGIN_TEMPLATE)
     
     def post(self):
         '''
-        Receives data input into login form. Verifies that input against
-        regular expressions and then the database. Redirects the user to
-        the welcome page if login was successful.
+        Handles login requests. Renders appropriate error messages, verifies
+        the input password and redirects to welcome page upon successful login.
         '''
         helper = HandlerHelper(self, (USER, PASSWORD))
-        if not helper.is_data_valid:
-            self.render(LOGIN_TEMPLATE, **helper.data_error_msgs)
-            return
+        helper.validate_form_input(LOGIN_TEMPLATE)
         user_entity = User.already_exists(helper.valid_data.get(USER))
-        if user_entity:
+        if helper.valid_data and user_entity:
             pwd_helper = PwdUtil(helper.valid_data.get(PASSWORD), 
                                  user_entity.password)
             if pwd_helper.verify_password():
-                CookieUtil.set_cookie(USER, helper.valid_data.get(USER), self)
+                helper.login_user()
                 self.redirect(WELCOME)
-                return
             else:
                 helper.set_form_field(PASSWORD + ERROR, "Incorrect password.")
-        else:
+                self.render(LOGIN_TEMPLATE, **helper.valid_data)
+        elif helper.valid_data:
             helper.set_form_field(USER + ERROR, "That user does not exist.")
-        self.render(LOGIN_TEMPLATE, **helper.valid_data)
+            self.render(LOGIN_TEMPLATE, **helper.valid_data)
                 
 class Logout(Handler):
     def get(self):
