@@ -743,12 +743,19 @@ class NewComment(Handler):
             self.redirect(POST_ID + post_key)
     
 class Welcome(Handler):
+    '''
+    Handles displaying the wecome page after a user has logged in or signed up.
+    '''
     def get(self):
-        username = CookieUtil.get_cookie(USER, self)
-        if username:
-            self.render(WELCOME_TEMPLATE, username = username)
+        '''
+        Displays the wecome page. If a user reaches this page without being 
+        logged in, directs them to the signup page.
+        '''
+        helper = HandlerHelper(self, ())
+        if helper.is_logged_in:
+            self.render(WELCOME_TEMPLATE, username = helper.cur_user)
         else:
-            self.redirect(LOGIN) 
+            self.redirect(LOGIN)
                 
 class Login(Handler):
     def get(self):
