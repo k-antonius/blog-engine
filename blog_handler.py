@@ -593,8 +593,11 @@ class NewPost(Handler):
         '''
         Renders the new post form on an initial request.
         '''
-        self.render(NEW_POST_TEMPLATE)
-        self._check_logged_in(SIGNUP)
+        helper = HandlerHelper(self, ())
+        if helper.is_logged_in:
+            self.render(NEW_POST_TEMPLATE)
+        else:
+            self.redirect(SIGNUP)
         
     def post(self):
         '''
@@ -605,12 +608,13 @@ class NewPost(Handler):
         helper = HandlerHelper(self, (SUBJECT, CONTENT))
         if not helper.is_logged_in:
             self.redirect(SIGNUP)
-        elif helper.is_data_valid:
+        elif not helper.is_data_valid:
+            helper.validate_form_input(NEW_POST_TEMPLATE)
+        else:
             new_post_key = BlogPost.create_new_post(helper.cur_user, 
                                                     helper.valid_data)
             self.redirect(POST_ID + new_post_key.urlsafe())
-        else:
-            self.render(NEW_POST_TEMPLATE, **helper.data_error_msgs)
+        
         
 class BlogPostDisplay(Handler):
     
