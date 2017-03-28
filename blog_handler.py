@@ -683,7 +683,7 @@ class Signup(Handler):
         '''
         Renders the template for signing up for a new account.
         '''
-        helper = HandlerHelper(self,(USER))
+        helper = HandlerHelper(self,())
         if helper.is_logged_in:
             self.redirect(WELCOME)
         else:
@@ -716,12 +716,15 @@ class NewComment(Handler):
     '''
     def get(self, post_key):
         '''
-        Renders the new comment html.
+        Displays the form to add a new comment to a blog post. If a user 
+        attempts to visit this page without being logged in, they are directed
+        to the signup page.
         '''
-        if self._check_logged_in(SIGNUP):
-            current_user = User.get_by_id(CookieUtil.get_cookie(USER, self))
-            post = ndb.Key(urlsafe=post_key)
-            self.render(COMMENT_TEMPLATE, current_post=post.get())
+        helper = HandlerHelper(self, (), post_key)
+        if helper.is_logged_in:
+            self.render(COMMENT_TEMPLATE, current_post=helper.cur_post)
+        else:
+            self.redirect(SIGNUP)
     
     def post(self, *args):
         '''
