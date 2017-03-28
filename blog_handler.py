@@ -588,10 +588,14 @@ class BlogMainPage(Handler):
                 
 
 class NewPost(Handler):
+    '''
+    Handles requests to make a new blog post.
+    '''
     
     def get(self):
         '''
-        Renders the new post form on an initial request.
+        Renders the new post form on an initial request. If no user is logged 
+        in directs to the signup page.
         '''
         helper = HandlerHelper(self, ())
         if helper.is_logged_in:
@@ -606,15 +610,12 @@ class NewPost(Handler):
         the new blog post.
         '''
         helper = HandlerHelper(self, (SUBJECT, CONTENT))
-        if not helper.is_logged_in:
-            self.redirect(SIGNUP)
-        elif not helper.is_data_valid:
-            helper.validate_form_input(NEW_POST_TEMPLATE)
-        else:
+        if helper.is_logged_in and helper.is_data_valid:
             new_post_key = BlogPost.create_new_post(helper.cur_user, 
                                                     helper.valid_data)
             self.redirect(POST_ID + new_post_key.urlsafe())
-        
+        else:
+            helper.validate_form_input(NEW_POST_TEMPLATE)
         
 class BlogPostDisplay(Handler):
     
@@ -663,24 +664,33 @@ class BlogPostDisplay(Handler):
         self.render(self.choose_template(cur_post), **to_render)
             
 class EditPost(Handler):
-    def get(self, post_id):
-        cur_post = self.get_cur_post(post_id)
-        to_render = {}
-        to_render[SUBJECT] = cur_post.post_subject
-        to_render[CONTENT] = cur_post.post_content
-        self.render(NEW_POST_TEMPLATE, **to_render)
-        
-    def post(self, post_id):
-        cur_post = self.get_cur_post(post_id)
-        valid_data = self._validate_user_input(SUBJECT, CONTENT)
-        if self._was_valid(valid_data):
-            # code below belongs in BlogPost classmethod
-            BlogPost.update_post(cur_post, self._get_form_data(valid_data))
-            self.redirect("/blog/post_id/" + post_id)
+    '''
+    Handles requests to edit posts.
+    '''
+    def get(self, post_key):
+        '''
+        Retrieves the current subject and content of a post and renders them
+        to a form for editing.
+        @param post_key: string id of a BlogPost entity supplied in the URI
+        '''
+        helper = HandlerHelper(self, (), post_key)
+        if helper.is_logged_in:
+            self.render(NEW_POST_TEMPLATE, subject=helper.cur_post.post_subject,
+                        content=helper.cur_post.post_content)
         else:
-            self.render(NEW_POST_TEMPLATE, **valid_data)
-            
+            self.redirect(SIGNUP)
         
+    def post(self, post_key):
+        '''
+        Handles submission of edited post form. Validates form data and 
+        submits edited content to the database.
+        '''
+        helper = HandlerHelper(self, (SUBJECT, CONTENT), post_key)
+        if helper.is_logged_in and helper.is_data_valid:
+            BlogPost.update_post(helper.cur_post, helper.valid_data)
+            self.redirect(POST_ID + post_key)
+        else:
+            helper.validate_form_input(NEW_POST_TEMPLATE)
         
 class Signup(Handler):
     '''

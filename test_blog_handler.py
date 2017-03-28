@@ -220,11 +220,6 @@ class TestNewPost(TestBlog):
         '''
         blog.User.create_new_user({blog.USER : "test_username",
                               blog.PASSWORD : "test_password"})
-        # Post 1 - redirect in post 
-        response = self.setPostRequest("", "test_subject", 
-                                       "test_content")
-        self.assertEqual(response.location, "http://localhost/blog/signup",
-                   "failure to be signed in did not redirect correctly (post).")
         
         # Post 2 - redirect in get
         response = blog.app.get_response(blog.NEWPOST)
