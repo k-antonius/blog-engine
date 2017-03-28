@@ -33,6 +33,7 @@ SIGNUP = HOME + "/signup"
 WELCOME = HOME + "/user_welcome"
 LOGIN =  HOME + "/login"
 LOGOUT = HOME + "/logout"
+POST_ID = HOME + "/post_id/" # N.B. the final "/" - never terminates URI
 POSTDISPLAY = r"/blog/post_id/(\w+-\w+|\w+)"
 NEWCOMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment"
 EDIT_POST = r"/blog/post_id/(\w+-\w+|\w+)/edit"
@@ -282,14 +283,17 @@ class HandlerHelper(object):
         CookieUtil.set_cookie(USER, self.valid_data.get(USER), self.handler)
         
     # add method to log user out
-    def validate_form_input(self, template):
+    def validate_form_input(self, template, **additional_elements):
         '''
         Checks the data input into the form for validity based on rules defined
         in the Form Helper class. Re-renders the form with error messages using
         the provided template.
         @param template: the template to render error messages to
+        @param additional_elements: if the template requires non-form input
+        to render correctly, must pass these elements to the template.
         '''
         if not self.is_data_valid:
+            self.data_error_msgs.update(additional_elements)
             self.handler.render(template, **self.data_error_msgs)
     
 class User(ndb.Model):
@@ -726,23 +730,17 @@ class NewComment(Handler):
         else:
             self.redirect(SIGNUP)
     
-    def post(self, *args):
+    def post(self, post_key):
         '''
         Handles form submission of new comment.
         '''
-        user_name = self._check_logged_in(SIGNUP)
-        if user_name:
-            valid_data = self._validate_user_input(CONTENT)
-            if self._was_valid(valid_data):
-                post_key_string = args[0]
-                new_comment_key = Comment.create_new_comment(user_name,
-                                                             post_key_string,
-                                                             self._get_form_data(valid_data))
-                self.redirect('/blog/post_id/' + post_key_string)
-            else:
-                to_render = self._get_form_data(valid_data)
-                to_render["current_post"] = self.get_cur_post(args[0])
-                self.render(COMMENT_TEMPLATE, **to_render)
+        helper = HandlerHelper(self, [CONTENT], post_key)
+        helper.validate_form_input(COMMENT_TEMPLATE,
+                                   current_post = helper.cur_post)
+        if helper.is_data_valid:
+            Comment.create_new_comment(helper.cur_user,
+                                       post_key, helper.valid_data)
+            self.redirect(POST_ID + post_key)
     
 class Welcome(Handler):
     def get(self):
