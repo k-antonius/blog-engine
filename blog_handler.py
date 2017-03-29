@@ -137,33 +137,33 @@ class Handler(webapp2.RequestHandler):
         '''
         return ndb.Key(urlsafe=post_string).get()
     
-    def update_like(self, post_entity):
+    def update_like(self, helper):
         '''
-        Receives a post request and likes/unlikes a blogpost.
-        @param post_entity: the BlogPost entity to update
-        @return: a mapping of template variable to an error message or
-        string value for like button.
+        Updates whether a user has liked a blog post in the database. Generates
+        appropriate error messages if a user attempts to like own post or 
+        visitor who isn't logged in attempts to like a post.
+        @param helper: instance of the HandlerHelper class
         '''
         LIKE_TEXT = "like_text"
         LIKE_ERROR =  "like_error"
-        to_render = {}
-        cur_like_value = self.gen_like_text(post_entity)
-        if not self.logged_in():
-            to_render[LIKE_ERROR] = ("You must be logged in to like or " +
-                                       "unlike a post.")
-            to_render[LIKE_TEXT] = cur_like_value
+        NOT_LOGGED_IN = "You must be logged in to like or unlike a post."
+        LIKE_OWN_POST = "You cannot like your own post."
+        cur_like_value = self.gen_like_text(helper.cur_post, helper.cur_user)
+        
+        if not helper.is_logged_in:
+            helper.set_template_field(LIKE_ERROR, NOT_LOGGED_IN)
+            helper.set_template_field(LIKE_TEXT, cur_like_value)
+            
+        elif helper.cur_user == helper.cur_post.post_author:
+            helper.set_template_field(LIKE_ERROR, LIKE_OWN_POST)
+            helper.set_template_field(LIKE_TEXT, cur_like_value)
+            
         else:
-            cur_user = self.logged_in_user()
-            if cur_user == post_entity.post_author:
-                to_render[LIKE_ERROR] = "You cannot like your own post."
-                to_render[LIKE_TEXT] = cur_like_value
-            else:
-                
-                BlogPost.add_like_unlike(post_entity, cur_user, cur_like_value)
-                to_render[LIKE_TEXT] = self.rev_like_value(cur_like_value)
-            
-        return to_render
-            
+            BlogPost.add_like_unlike(helper.cur_post, helper.cur_user, 
+                                     cur_like_value)
+            helper.set_template_field(LIKE_TEXT, 
+                                      self.rev_like_value(cur_like_value))
+
     def rev_like_value(self, cur_like_value):
         '''
         Returns a string that is the opposite of the current "like" status,
@@ -187,19 +187,18 @@ class Handler(webapp2.RequestHandler):
         else:
             return "Like"
     
-    def gen_like_text(self, post_entity):
+    def gen_like_text(self, post_entity, cur_user):
         '''
         Returns the proper string, "Like" or "Unlike" based on whether the
         user logged in has like a given post.
-        @param post_entity: the subject BlogPost entity
-        @return: string literal "Like" if the logged in user has not liked 
-        this post yet, or if no user is logged in, otherwise string literal
-        "Unlike."
+        @param post_entity: the blog post that is the subject of the like/unlike
+        @param cur_user: the user id string of the viewing user
+        @return: appropriate string literal
         '''
-        if self.logged_in():
-            if BlogPost.already_liked(post_entity, self.logged_in_user()):
-                return "Unlike"
-        return "Like"
+        if BlogPost.already_liked(post_entity, cur_user):
+            return "Unlike"
+        else:
+            return "Like"
     
     def gen_comment_uri(self, post_entity):
         '''
@@ -223,7 +222,7 @@ class HandlerHelper(object):
         self.is_data_valid = False
         self._validate_user_input(field_list)
         
-    def set_form_field(self, key, value):
+    def set_template_field(self, key, value):
         '''
         Include text for rendering in html template.
         @params:
@@ -273,7 +272,6 @@ class HandlerHelper(object):
             self.valid_data = form_data
             self.is_data_valid = True
             
-    # add method to log user in
     def login_user(self):
         '''
         Sets a cookie for the user name contained in the valid-data dictionary.
@@ -282,7 +280,6 @@ class HandlerHelper(object):
         assert self.valid_data.get(USER)
         CookieUtil.set_cookie(USER, self.valid_data.get(USER), self.handler)
         
-    # add method to log user out
     def validate_form_input(self, template, **additional_elements):
         '''
         Checks the data input into the form for validity based on rules defined
@@ -542,11 +539,12 @@ class BlogMainPage(Handler):
         - for each post: determine like status, build comment URI
         - render the page
         '''
+        helper = HandlerHelper(self, ())
         recent_posts = BlogPost.most_recent_20()
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
-                    button_data = self.setup_buttons(recent_posts))
+                    button_data = self.setup_buttons(recent_posts, helper))
         
-    def setup_buttons(self, posts_to_render):
+    def setup_buttons(self, posts_to_render, helper):
         '''
         Gathers information about like status, comment uri, and error message
         status for each blog post that will be displayed and organizes the
@@ -562,7 +560,7 @@ class BlogMainPage(Handler):
         to_render = {}
         for post in posts_to_render:
             key_string = post.key.urlsafe()
-            button_text = self.gen_like_text(post)
+            button_text = self.gen_like_text(post, helper.cur_user)
             uri_text = "/blog/post_id/" + self.gen_comment_uri(post)
             to_render[key_string] = {LIKE_TEXT : button_text,
                                COMMENT_URI : uri_text,
@@ -577,15 +575,16 @@ class BlogMainPage(Handler):
         - update using same method is in BlogPostDisplay
         - render page in same was as get method
         '''
-        cur_post = self.get_cur_post(self.get_attribute("like_button"))
-        cur_post_button_info = self.update_like(cur_post)
-        cur_post_button_info["comment_uri"] = self.gen_comment_uri(cur_post)
+        helper = HandlerHelper(self, (), self.request.get("like_button"))
+        self.update_like(helper)
+        changed_post_dict = helper.valid_data
+        changed_post_dict.update(dict(comment_uri = 
+                                 self.gen_comment_uri(helper.cur_post)))
         recent_posts = BlogPost.most_recent_20()
-        buttons_info = self.setup_buttons(recent_posts)
-        buttons_info[cur_post.key.urlsafe()] = cur_post_button_info
+        button_info = self.setup_buttons(recent_posts, helper)
+        button_info.update({helper.cur_post.key.urlsafe() : changed_post_dict})
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
-                    button_data = buttons_info)
-                
+                    button_data = button_info)             
 
 class NewPost(Handler):
     '''
@@ -619,19 +618,14 @@ class NewPost(Handler):
         
 class BlogPostDisplay(Handler):
     
-    def get(self, post_id):
+    def get(self, post_key):
         '''
         Renders an individual blog post an all comments made on that post.
         '''
-        cur_post = self.get_cur_post(post_id)
-        self.render(self.choose_template(cur_post),
-                    current_post = cur_post,
-                    comment_link = self.gen_comment_uri(cur_post),
-                    like_text = self.gen_like_text(cur_post))
+        helper = HandlerHelper(self, (), post_key)
+        self._renderPostTemplate(helper)
     
-    
-    
-    def choose_template(self, post_entity):
+    def _choose_template(self, post_entity):
         '''
         Returns the proper template for rendering based on whether this post
         has comments.
@@ -641,27 +635,47 @@ class BlogPostDisplay(Handler):
             return POST_ONLY_TEMPLATE
         else:
             return POST_WITH_COMMENTS
-            
-    def post(self, post_id):
+    
+    def _renderPostTemplate(self, helper):
         '''
-        Handles like and unliking of an individual post.
+        Renders a blog post template.
+        @param handler: a HandlerHelper instance.
         '''
-        cur_post = self.get_cur_post(post_id)
-        to_render = {}
-        if self.request.get("like_button"):
-            to_render = self.update_like(cur_post)
+        to_render = dict(current_post = helper.cur_post,
+                    comment_link = self.gen_comment_uri(helper.cur_post),
+                    like_text = self.gen_like_text(helper.cur_post, 
+                                                   helper.cur_user),
+                    all_comments = BlogPost.get_all_comments(helper.cur_post))
+        to_render.update(helper.valid_data)
+        self.render(self._choose_template(helper.cur_post),
+                    **to_render)
             
-            # add login check
-        if self.request.get("edit_button"):
-            if self.logged_in_user() == cur_post.post_author:
-                self.redirect("/blog/post_id/" + post_id + "/edit")
-                return
+    def post(self, post_key):
+        '''
+        Handles requests to like/unlike a post, or edit a post.
+        Re-renders the template with appropriate error messages if a user is
+        not logged in, attempts to edit another's post, or like own post.
+        '''
+        LIKE = "like_button"
+        EDIT = "edit_button"
+        EDIT_ERROR = "edit_error"
+        NOT_LOGGED_IN = "You must be logged in to edit a post."
+        NOT_OWN_POST = "You can't edit another user's post."
+        helper = HandlerHelper(self, (), post_key)
+        
+        if self.request.get(LIKE):
+            self.update_like(helper)
+            self._renderPostTemplate(helper)
+            
+        if self.request.get(EDIT):
+            if not helper.is_logged_in:
+                helper.set_template_field(EDIT_ERROR, NOT_LOGGED_IN)
+                self._renderPostTemplate(helper)
+            elif helper.cur_post.post_author != helper.cur_user:
+                helper.set_template_field(EDIT_ERROR, NOT_OWN_POST)
+                self._renderPostTemplate(helper)
             else:
-                to_render["edit_error"] = "You can't edit another user's post."
-                to_render["like_text"] = self.gen_like_text(cur_post)
-        to_render["current_post"] = cur_post
-        to_render["comment_link"] = self.gen_comment_uri(cur_post)
-        self.render(self.choose_template(cur_post), **to_render)
+                self.redirect(POST_ID + post_key + "/edit")
             
 class EditPost(Handler):
     '''
@@ -684,6 +698,7 @@ class EditPost(Handler):
         '''
         Handles submission of edited post form. Validates form data and 
         submits edited content to the database.
+        @param post_key: string id of a BlogPost entity supplied in the URI
         '''
         helper = HandlerHelper(self, (SUBJECT, CONTENT), post_key)
         if helper.is_logged_in and helper.is_data_valid:
@@ -720,7 +735,7 @@ class Signup(Handler):
         
         user_entity = User.already_exists(helper.valid_data.get(USER))
         if helper.is_data_valid and user_entity:
-            helper.set_form_field(USER + ERROR, "User already exists. Please" +
+            helper.set_template_field(USER + ERROR, "User already exists. Please" +
                                   " choose another user name.")
             self.render(SIGNUP_TEMPLATE, **helper.valid_data)
         elif helper.is_data_valid:
@@ -801,10 +816,10 @@ class Login(Handler):
                 helper.login_user()
                 self.redirect(WELCOME)
             else:
-                helper.set_form_field(PASSWORD + ERROR, "Incorrect password.")
+                helper.set_template_field(PASSWORD + ERROR, "Incorrect password.")
                 self.render(LOGIN_TEMPLATE, **helper.valid_data)
         elif helper.valid_data:
-            helper.set_form_field(USER + ERROR, "That user does not exist.")
+            helper.set_template_field(USER + ERROR, "That user does not exist.")
             self.render(LOGIN_TEMPLATE, **helper.valid_data)
                 
 class Logout(Handler):
