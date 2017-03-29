@@ -2,7 +2,7 @@
 {% block content %}
 	{% for current_post in recent_blog_posts %}
   <div>__________________________________</div>
-  <div><h3>{{current_post.post_subject}}</h3>
+  <div><h3><a href="/blog/post_id/{{current_post.key.urlsafe()}}">{{current_post.post_subject}}</a></h3>
     <a href={{button_data[current_post.key.urlsafe()]["comment_uri"]}}>
       Comment on this Post</a></div>
   <br>
