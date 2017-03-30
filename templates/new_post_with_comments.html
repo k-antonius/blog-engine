@@ -9,6 +9,10 @@
   On: {{comment.date_created}}
   <div>=============</div>
   {{comment.content}}
+  <div><form method="post">
+    <button name="edit_comment" value="{{comment.key.urlsafe()}}" type="submit">
+      Edit Comment</button>{{error_map[comment.key.urlsafe()]}}
   <div>=============</div>
+
 {% endfor %}
 {% endblock %}

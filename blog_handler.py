@@ -36,6 +36,7 @@ LOGOUT = HOME + "/logout"
 POST_ID = HOME + "/post_id/" # N.B. the final "/" - never terminates URI
 POSTDISPLAY = r"/blog/post_id/(\w+-\w+|\w+)"
 NEWCOMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment"
+EDIT_COMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment/(\w+-\w+|\w+)/edit"
 EDIT_POST = r"/blog/post_id/(\w+-\w+|\w+)/edit"
 
 # Form Input Fields
@@ -421,13 +422,6 @@ class BlogPost(ndb.Model):
         post_entity.put()
         return post_entity.num_comments
     
-    @classmethod 
-    def get_post_key(cls, user_name, post_id):
-        '''
-        Returns the key object of a post entity given its author and int id.
-        '''
-        pass
-    
     @classmethod
     def add_like_unlike(cls, post_entity, user_name, like_status):
         '''
@@ -524,6 +518,23 @@ class Comment(ndb.Model):
         ids.
         '''
         return ndb.Key("Comment", str(comment_num), parent=post_key)
+    
+    @classmethod
+    def entity_from_uri(cls, comment_uri_key):
+        '''
+        Returns the comment entity from a uri key string.
+        @param comment_uri_key: the url safe key string
+        '''
+        return ndb.Key(urlsafe=comment_uri_key).get()
+    
+    @classmethod
+    def update_comment(cls, comment_entity, form_data):
+        '''
+        Updates the content field of a Comment.
+        '''
+        comment_entity.content = form_data[CONTENT]
+        comment_entity.put()
+        return comment_entity
 
 class BlogMainPage(Handler):
     '''
@@ -636,46 +647,121 @@ class BlogPostDisplay(Handler):
         else:
             return POST_WITH_COMMENTS
     
-    def _renderPostTemplate(self, helper):
+    def _renderPostTemplate(self, helper, comment_key = None):
         '''
         Renders a blog post template.
         @param handler: a HandlerHelper instance.
+        @param comment_key: comment whose error msg needs updating
         '''
+        comments = BlogPost.get_all_comments(helper.cur_post)
+        errors = self._build_error_map(comments)
+        self._update_error_map(errors, helper, comment_key)
         to_render = dict(current_post = helper.cur_post,
                     comment_link = self.gen_comment_uri(helper.cur_post),
                     like_text = self.gen_like_text(helper.cur_post, 
                                                    helper.cur_user),
-                    all_comments = BlogPost.get_all_comments(helper.cur_post))
+                    all_comments = comments,
+                    error_map = errors)
         to_render.update(helper.valid_data)
         self.render(self._choose_template(helper.cur_post),
                     **to_render)
+        
+    def _build_error_map(self, comment_entity_list):
+        '''
+        Returns a mapping of URL safe comment entity keys to empty strings.
+        @param comment_entity_list: list of comment entities to be rendered
+            in the template
+        '''
+        error_map = dict()
+        for comment in comment_entity_list:
+            error_map.update({comment.key.urlsafe() : ""})
+        return error_map
+    
+    def _update_error_map(self, error_map, helper, comment_key):
+        '''
+        Updates the mapping of comment entity key strings to map an error
+        message to the correct comment.
+        @param error_map: dictionary built with build error map function
+        @param helper: HandlerHelper instance
+        @param comment_key: the key string of the comment with an error message 
+        '''
+        error_msg = helper.valid_data.get("edit_comment_error")
+        if error_msg:
+            error_map.update({comment_key : error_msg})
+            
             
     def post(self, post_key):
         '''
-        Handles requests to like/unlike a post, or edit a post.
+        Handles requests to like/unlike a post, or edit a post/comment.
         Re-renders the template with appropriate error messages if a user is
         not logged in, attempts to edit another's post, or like own post.
         '''
         LIKE = "like_button"
-        EDIT = "edit_button"
+        EDIT_POST = "edit_post"
+        EDIT_COMMENT = "edit_comment"
         EDIT_ERROR = "edit_error"
-        NOT_LOGGED_IN = "You must be logged in to edit a post."
-        NOT_OWN_POST = "You can't edit another user's post."
+        COM_ERROR = "edit_comment_error"
+        POST_ROUTE = POST_ID + post_key
         helper = HandlerHelper(self, (), post_key)
+        edit_c = self.request.get(EDIT_COMMENT)
+        
+        # Begin helper functions ------
+        def _edit_request(edit_type, error_type, author, route, 
+                          comment_key = None):
+            '''
+            Process an edit request, format an error message or redirect to the
+            appropriate handler.
+            @param edit_type: "post" or "comment"
+            @param error_type: name of the error template field
+            @param comment_key: if the edit request is a comment edit request,
+            the key string of the comment entity must be supplied
+            '''
+            def _format_error_msgs(subject):
+                '''
+                Formats the error messages for attempting to edit a post/comment
+                while not logged in or not an author.
+                @param subject: "post" or "comment"
+                '''
+                not_logged_in = "logged in"
+                not_own_post = "a {subj_type}'s author"
+                
+                def _choose_error():
+                    '''
+                    Selects the correct error message.
+                    '''
+                    if helper.is_logged_in:
+                        return not_logged_in
+                    else:
+                        return not_own_post
+                    
+                error_type_base = ("You must be " + _choose_error() + 
+                                   " to edit a {subj_type}.")
+                    
+                return error_type_base.format(error_condition = _choose_error(), 
+                                          subj_type = subject)
+                
+            if not helper.is_logged_in or (author != helper.cur_user):
+                    helper.set_template_field(error_type, 
+                                              _format_error_msgs(edit_type))
+                    self._renderPostTemplate(helper, comment_key)
+            else:
+                self.redirect(route)
+        # End helper functions -------
         
         if self.request.get(LIKE):
             self.update_like(helper)
             self._renderPostTemplate(helper)
+                
+        elif self.request.get(EDIT_POST):
+            route = POST_ROUTE + "/edit"
+            author = helper.cur_post.post_author
+            _edit_request("post", EDIT_ERROR, author, route)
             
-        if self.request.get(EDIT):
-            if not helper.is_logged_in:
-                helper.set_template_field(EDIT_ERROR, NOT_LOGGED_IN)
-                self._renderPostTemplate(helper)
-            elif helper.cur_post.post_author != helper.cur_user:
-                helper.set_template_field(EDIT_ERROR, NOT_OWN_POST)
-                self._renderPostTemplate(helper)
-            else:
-                self.redirect(POST_ID + post_key + "/edit")
+        elif edit_c:
+            route = POST_ROUTE + "/comment/" + edit_c + "/edit"
+            author = Comment.entity_from_uri(edit_c).author
+            _edit_request("comment", COM_ERROR, author, route, edit_c) 
+                
             
 class EditPost(Handler):
     '''
@@ -770,7 +856,47 @@ class NewComment(Handler):
             Comment.create_new_comment(helper.cur_user,
                                        post_key, helper.valid_data)
             self.redirect(POST_ID + post_key)
+            
+class EditComment(Handler):
+    '''
+    Handles requests to edit a comment.
+    @constant POST_KEY: URI supplied id of the post entity parent, always the 
+        first in the list hence constant 0.
+    @constant COM_KEY: same thing but with a comment entity child, always
+        second item in the list.
+    '''
+    POST_KEY = 0
+    COM_KEY = 1
     
+    def get(self, *key_list):
+        '''
+        Retrieves the content of a comment and renders it to a form for 
+        editing.
+        @param post_key: string id of a BlogPost entity supplied in the URI
+        '''
+        helper = HandlerHelper(self, (), key_list[self.POST_KEY])
+        if helper.is_logged_in:
+            cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
+            self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
+                        content=cur_comment.content)
+        else: self.redirect(SIGNUP)
+    
+    def post(self, *key_list):
+        '''
+        Handles submission of edited comment form. Validates data submitted and
+        updates the database.
+        '''
+        helper = HandlerHelper(self, [CONTENT], key_list[self.POST_KEY])
+        if helper.is_logged_in and helper.is_data_valid:
+            cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
+            Comment.update_comment(cur_comment, helper.valid_data)
+            self.redirect(POST_ID + key_list[self.POST_KEY])
+        else:
+            helper.validate_form_input(COMMENT_TEMPLATE,
+                                       current_post = helper.cur_post)
+        
+        
+        
 class Welcome(Handler):
     '''
     Handles displaying the wecome page after a user has logged in or signed up.
@@ -892,6 +1018,7 @@ app = webapp2.WSGIApplication([(HOME, BlogMainPage),
                                (NEWPOST, NewPost),
                                (POSTDISPLAY, BlogPostDisplay),
                                (NEWCOMMENT, NewComment),
+                               (EDIT_COMMENT, EditComment),
                                (EDIT_POST, EditPost),
                                (SIGNUP, Signup),
                                (WELCOME, Welcome),
