@@ -49,17 +49,23 @@ CONTENT = "content"
 ERROR = "_error"    
 
 class Handler(webapp2.RequestHandler):
-        
-    def write(self, *a, **kw):
-        self.response.out.write(*a, **kw)
-        
-    def render_str(self, a, **kw):
-        t = JINJA.get_template(a)
-        return t.render(kw)
-    
-    def render(self, *a, **kw):
-        self.write(self.render_str(*a, **kw))
-    
+
+    def render(self, template, **template_fields):
+        '''
+        Prepares a template for rendering and renders the template.
+        @param template: the template html
+        @param template_files: dictionary of arguments where keys match
+        template variables and values are the strings to render in place of
+        those variables.
+        '''
+        def render_template():
+            '''
+            Helper function to load and render template.
+            '''
+            template_to_render = JINJA.get_template(template)
+            return template_to_render.render(template_fields)
+        self.response.out.write(render_template())
+            
     def update_like(self, helper):
         '''
         Updates whether a user has liked a blog post in the database. Generates
