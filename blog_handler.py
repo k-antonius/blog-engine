@@ -60,12 +60,6 @@ class Handler(webapp2.RequestHandler):
     def render(self, *a, **kw):
         self.write(self.render_str(*a, **kw))
     
-    def get_attribute(self, type):
-        '''
-        Returns the value of the specified request type.
-        '''
-        return self.request.get(type)
-    
     def update_like(self, helper):
         '''
         Updates whether a user has liked a blog post in the database. Generates
@@ -104,17 +98,6 @@ class Handler(webapp2.RequestHandler):
             return "Unlike"
         else:
             return "Like"
-        
-#     def like_button_text(self, like_value):
-#         '''
-#         Returns a string for like button.
-#         @param like_value: boolean value whether post has been liked
-#         @return: "Like" or "Unlike" string literal
-#         '''
-#         if like_value:
-#             return "Unlike"
-#         else:
-#             return "Like"
     
     def gen_like_text(self, post_entity, cur_user):
         '''
@@ -918,11 +901,11 @@ class FormHelper(object):
         field_name - name of the form field.
         '''
         if input_name == PWD_VERIFY:
-            return self._handler.get_attribute(
-                            PWD_VERIFY) == self._handler.get_attribute(PASSWORD)
+            return self._handler.request.get(
+                            PWD_VERIFY) == self._handler.request.get(PASSWORD)
         else:
             pattern = re.compile(self._regex_table[input_name])
-            return pattern.match(self._handler.get_attribute(input_name))
+            return pattern.match(self._handler.request.get(input_name))
         
     def validate_form_data(self, args):
         '''
@@ -937,7 +920,7 @@ class FormHelper(object):
                 to_render[input_name] = ""
                 self.valid_input = False
             else:
-                to_render[input_name] = self._handler.get_attribute(input_name)
+                to_render[input_name] = self._handler.request.get(input_name)
         return to_render
         
 app = webapp2.WSGIApplication([(HOME, BlogMainPage),
