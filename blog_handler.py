@@ -66,78 +66,6 @@ class Handler(webapp2.RequestHandler):
         '''
         return self.request.get(type)
     
-    def _check_logged_in(self, route):
-        '''
-        Checks to make sure correct user is logged in. If not redirects to 
-        @param URI route.
-        If a user is logged in returns the user's name as a string.
-        '''
-        # get user name from cookie
-        # check to make sure user is logged in
-        logged_in_user = CookieUtil.get_cookie(USER, self)
-        if not logged_in_user:
-            self.redirect(route)
-        else:
-            return logged_in_user
-        
-    def logged_in(self):
-        '''
-        Returns true if a user is logged in, false otherwise
-        '''
-        if CookieUtil.get_cookie(USER, self):
-            return True
-        else:
-            return False
-        
-    def logged_in_user(self):
-        '''
-        Returns the user currently logged in.
-        '''
-        user = CookieUtil.get_cookie(USER, self)
-        assert (user, "Attempted to retrieve a logged in user where" +
-                " none was logged in.")
-        return user
-        
-            
-    def _validate_user_input(self, *args):
-        '''
-        Checks that user input into the form is valid. If it is not,
-        generates suitable error messages and re-renders the page. If valid,
-        returns the data input into the form in a dict keyed to the global
-        constants.
-        @param args: the names of the form fields that need verifying.
-        '''
-        form_helper = FormHelper(self)
-        form_data = form_helper.validate_form_data(args)
-        if not form_helper.valid_input:
-            return False, form_data
-        else:
-            return True, form_data
-    
-    def _was_valid(self, form_tuple):
-        '''
-        Helper method to determine whether processed form data was valid.
-        Takes a tuple of length 2 where element 0 is a boolean. 
-        Returns the value of that boolean.
-        '''
-        return form_tuple[0]
-    
-    def _get_form_data(self, form_tuple):
-        '''
-        Helper method to get form data back from form processor.
-        Takes a tuple of length 2 where element 1 is a dictionary.
-        Returns the dictionary.
-        '''
-        return form_tuple[1]
-    
-    def get_cur_post(self, post_string):
-        '''
-        Returns a blog post ENTITY from url-safe string.
-        @param post_string: the url-safe post key string
-        @param username: the post-author's username
-        '''
-        return ndb.Key(urlsafe=post_string).get()
-    
     def update_like(self, helper):
         '''
         Updates whether a user has liked a blog post in the database. Generates
@@ -177,16 +105,16 @@ class Handler(webapp2.RequestHandler):
         else:
             return "Like"
         
-    def like_button_text(self, like_value):
-        '''
-        Returns a string for like button.
-        @param like_value: boolean value whether post has been liked
-        @return: "Like" or "Unlike" string literal
-        '''
-        if like_value:
-            return "Unlike"
-        else:
-            return "Like"
+#     def like_button_text(self, like_value):
+#         '''
+#         Returns a string for like button.
+#         @param like_value: boolean value whether post has been liked
+#         @return: "Like" or "Unlike" string literal
+#         '''
+#         if like_value:
+#             return "Unlike"
+#         else:
+#             return "Like"
     
     def gen_like_text(self, post_entity, cur_user):
         '''
@@ -894,8 +822,6 @@ class EditComment(Handler):
         else:
             helper.validate_form_input(COMMENT_TEMPLATE,
                                        current_post = helper.cur_post)
-        
-        
         
 class Welcome(Handler):
     '''
