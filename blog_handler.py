@@ -505,6 +505,7 @@ class BlogMainPage(Handler):
         self.update_like(helper)
         changed_post_dict = helper.valid_data
         changed_post_dict.update(dict(comment_uri = 
+                                 "/blog/post_id/" + 
                                  self.gen_comment_uri(helper.cur_post)))
         recent_posts = BlogPost.most_recent_20()
         button_info = self.setup_buttons(recent_posts, helper)
