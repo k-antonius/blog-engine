@@ -98,8 +98,6 @@ class Handler(webapp2.RequestHandler):
         Returns a string that is the opposite of the current "like" status,
         e.g. if "Like" is input, returns "Unlike."
         '''
-        assert (cur_like_value == "Like" or cur_like_value == "Unlike",
-                "Impossible value for cur_like_value, was " + cur_like_value)
         if cur_like_value == "Like":
             return "Unlike"
         else:
@@ -564,48 +562,50 @@ class BlogPostDisplay(Handler):
         else:
             return POST_WITH_COMMENTS
     
-    def _renderPostTemplate(self, helper, comment_key = None):
+    def _renderPostTemplate(self, helper, comment_key = None,
+                            error_type = None):
         '''
         Renders a blog post template.
         @param handler: a HandlerHelper instance.
         @param comment_key: comment whose error msg needs updating
+        @param error_type: "edit" or "delete" string literal used to update
+            correct error message field in the template.
         '''
         comments = BlogPost.get_all_comments(helper.cur_post)
-        errors = self._build_error_map(comments)
-        self._update_error_map(errors, helper, comment_key)
+        
+        def _build_error_map():
+            '''
+            Returns a mapping of URL safe comment entity keys to empty strings.
+            '''
+            error_map = dict()
+            for comment in comments:
+                error_map.update({comment.key.urlsafe() : dict(edit_comment_error = "",
+                                                               delete_comment_error = "")})
+            return error_map
+        
+        error_map = _build_error_map()
+        
+        def _update_error_map():
+            '''
+            Updates the mapping of comment entity key strings to map an error
+            message to the correct comment. 
+            '''
+            error_msg = helper.valid_data.get(error_type)
+            if error_msg and ("comment" in error_msg):
+                sub_dict = error_map.get(comment_key)
+                sub_dict.update(dict({error_type : error_msg}))
+                error_map.update({comment_key : sub_dict})
+        
+        _update_error_map()       
         to_render = dict(current_post = helper.cur_post,
                     comment_link = self.gen_comment_uri(helper.cur_post),
                     like_text = self.gen_like_text(helper.cur_post, 
                                                    helper.cur_user),
                     all_comments = comments,
-                    error_map = errors)
+                    error_map = error_map)
         to_render.update(helper.valid_data)
         self.render(self._choose_template(helper.cur_post),
                     **to_render)
-        
-    def _build_error_map(self, comment_entity_list):
-        '''
-        Returns a mapping of URL safe comment entity keys to empty strings.
-        @param comment_entity_list: list of comment entities to be rendered
-            in the template
-        '''
-        error_map = dict()
-        for comment in comment_entity_list:
-            error_map.update({comment.key.urlsafe() : ""})
-        return error_map
-    
-    def _update_error_map(self, error_map, helper, comment_key):
-        '''
-        Updates the mapping of comment entity key strings to map an error
-        message to the correct comment.
-        @param error_map: dictionary built with build error map function
-        @param helper: HandlerHelper instance
-        @param comment_key: the key string of the comment with an error message 
-        '''
-        error_msg = helper.valid_data.get("edit_comment_error")
-        if error_msg:
-            error_map.update({comment_key : error_msg})
-            
             
     def post(self, post_key):
         '''
@@ -618,9 +618,14 @@ class BlogPostDisplay(Handler):
         EDIT_COMMENT = "edit_comment"
         EDIT_ERROR = "edit_error"
         COM_ERROR = "edit_comment_error"
+        COM_DEL_ERROR = "delete_comment_error"
+        POST_DEL_ERROR = "delete_error"
+        DEL_POST = "delete_post"
+        DEL_COMMENT = "delete_comment"
         POST_ROUTE = POST_ID + post_key
         helper = HandlerHelper(self, (), post_key)
         edit_c = self.request.get(EDIT_COMMENT)
+        del_c = self.request.get(DEL_COMMENT)
         
         # Begin helper functions ------
         def _edit_request(edit_type, error_type, author, route, 
@@ -650,9 +655,16 @@ class BlogPostDisplay(Handler):
                         return not_logged_in
                     else:
                         return not_own_post
+                def _choose_action():
+                    if ((error_type == POST_DEL_ERROR) or 
+                        (error_type == COM_DEL_ERROR)):
+                        return "delete"
+                    else:
+                        return "edit"
                     
                 error_type_base = ("You must be " + _choose_error() + 
-                                   " to edit a {subj_type}.")
+                                   " to " + _choose_action() 
+                                   + " a {subj_type}.")
                     
                 return error_type_base.format(error_condition = _choose_error(), 
                                           subj_type = subject)
@@ -660,8 +672,12 @@ class BlogPostDisplay(Handler):
             if not helper.is_logged_in or (author != helper.cur_user):
                     helper.set_template_field(error_type, 
                                               _format_error_msgs(edit_type))
-                    self._renderPostTemplate(helper, comment_key)
+                    self._renderPostTemplate(helper, comment_key, error_type)
             else:
+                if error_type == POST_DEL_ERROR:
+                    helper.cur_post.key.delete()
+                elif error_type == COM_DEL_ERROR:
+                    ndb.Key(urlsafe=del_c).delete()
                 self.redirect(route)
         # End helper functions -------
         
@@ -677,8 +693,15 @@ class BlogPostDisplay(Handler):
         elif edit_c:
             route = POST_ROUTE + "/comment/" + edit_c + "/edit"
             author = Comment.entity_from_uri(edit_c).author
-            _edit_request("comment", COM_ERROR, author, route, edit_c) 
-                
+            _edit_request("comment", COM_ERROR, author, route, edit_c)
+        
+        elif self.request.get(DEL_POST):
+             author = helper.cur_post.post_author
+             _edit_request("post", POST_DEL_ERROR, author, WELCOME)
+        
+        elif del_c:
+            author = Comment.entity_from_uri(del_c).author
+            _edit_request("comment", COM_DEL_ERROR, author, POST_ROUTE, del_c)
             
 class EditPost(Handler):
     '''

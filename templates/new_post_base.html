@@ -5,13 +5,19 @@
     <div>{{current_post.post_content}}</div>
     <div>
       <form method = "post">
-        <button name = "edit_button" value="edit"
+        <button name = "edit_post" value="edit"
           type="submit">Edit Post</button>{{edit_error}}
     </div>
     <div>
       <form method="post">
         <button name="like_button"
          type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
+      </form>
+    </div>
+    <div>
+      <form method="post">
+        <button name="delete_post" value="delete"
+        type="submit">Delete Post</button>{{delete_error}}
       </form>
     </div>
 		<div id="comment">
