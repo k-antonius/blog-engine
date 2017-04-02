@@ -218,7 +218,8 @@ class User(ndb.Model):
     email = ndb.StringProperty()
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     user_picture = ndb.StringProperty()
-    num_posts = ndb.IntegerProperty()
+    posts_made = ndb.IntegerProperty()
+    cur_num_posts = ndb.IntegerProperty()
     
     @classmethod
     def create_new_user(cls, form_data):
@@ -237,7 +238,8 @@ class User(ndb.Model):
                             password = secured_pwd, 
                             email= form_data.get(EMAIL), 
                             id = form_data.get(USER),
-                            num_posts = 0)
+                            posts_made = 0,
+                            cur_num_posts = 0)
             new_user_key = new_user.put()
             return new_user_key
                             
@@ -255,17 +257,19 @@ class User(ndb.Model):
         
     
     @classmethod
-    def increment_num_posts(cls, user_name):
+    def incr_posts_made(cls, user_name):
         '''
-        Increment the number of posts this user has made by one, 
-        given the user name, the key id of a user entity. Returns the number
-        of posts for this user resulting from the increment operation.
+        Increment the total number of posts made and the current number of
+        posts outstanding for this user.
+        @param user_name: the string id key for this user entity
+        @return: the total number of posts this user has ever made
         '''
         user_key = ndb.Key("User", user_name)
         user = user_key.get()
-        user.num_posts += 1
+        user.posts_made += 1
+        user.cur_num_posts += 1
         user.put()
-        return user.num_posts
+        return user.posts_made
     
     @classmethod
     def get_num_posts(cls, user_name):
@@ -275,7 +279,7 @@ class User(ndb.Model):
         '''
         user_key = ndb.Key("User", user_name)
         user = user_key.get()
-        return user.num_posts
+        return user.posts_made
     
     @classmethod
     def _secure_password(cls, clear_text):
@@ -298,7 +302,8 @@ class BlogPost(ndb.Model):
     date_created = ndb.DateTimeProperty(auto_now_add = True)
     last_edited = ndb.DateTimeProperty()
     users_liked = ndb.StringProperty(repeated=True)
-    num_comments = ndb.IntegerProperty()
+    comments_made = ndb.IntegerProperty()
+    cur_num_comments = ndb.IntegerProperty()
     
     
     @classmethod
@@ -311,7 +316,7 @@ class BlogPost(ndb.Model):
         An ndb User entity is the parent of every post.
         '''
         
-        post_number = str(User.increment_num_posts(user_name))
+        post_number = str(User.incr_posts_made(user_name))
         new_post = BlogPost(post_subject = form_data.get(SUBJECT),
                             post_content = form_data.get(CONTENT),
                             post_author = user_name,
@@ -319,23 +324,34 @@ class BlogPost(ndb.Model):
         new_post.post_number = post_number
         new_post.key = ndb.Key("User", user_name, "BlogPost", post_number)
         new_post.users_liked = []
-        new_post.num_comments = 0
+        new_post.comments_made = 0
+        new_post.cur_num_comments = 0
         new_post_key = new_post.put()
        
         return new_post_key
     
     @classmethod
-    def increment_num_comments(cls, post_entity):
+    def incr_comments_made(cls, post_entity):
         '''
-        Increments the number of comments on this post. The number of 
-        comments of a post is also the id of a given child comment entity.
+        Increments both the total number of comments made to date on and the
+        number of comments currently outstanding.
+        @param post_entity: the BlogPost entity to be updated.
+        @return: the total number of comments made.
         '''
-        if post_entity.num_comments:
-            post_entity.num_comments += 1
-        else:
-            post_entity.num_comments = 1
+        post_entity.comments_made += 1
+        post_entity.cur_num_comments += 1
         post_entity.put()
-        return post_entity.num_comments
+        return post_entity.comments_made
+    
+    @classmethod
+    def incr_cur_num_comments(cls, post_entity):
+        '''
+        Increment the current number of comments on this post.
+        @param post_entity: the BlogPost entity to be updated.
+        '''
+        post_entity.cur_num_comments += 1
+        post_entity.put()
+        return post_entity.cur_num_comments
     
     @classmethod
     def add_like_unlike(cls, post_entity, user_name, like_status):
@@ -397,6 +413,19 @@ class BlogPost(ndb.Model):
         post_entity.post_content = form_data[CONTENT]
         post_entity.put()
         return post_entity
+    
+    @classmethod
+    def delete_post(cls, post_entity):
+        '''
+        Deletes this post entity and decrement the current number of posts
+        outstanding for the post's author.
+        @param post_entity: the post to be deleted
+        '''
+        user_entity = ndb.Key("User", post_entity.post_author).get()
+        user_entity.cur_num_posts -= 1
+        assert user_entity.cur_num_posts >= 0, "Num posts can't be < 0."
+        post_entity.key.delete()
+        user_entity.put()
 
 class Comment(ndb.Model):
     '''
@@ -421,7 +450,7 @@ class Comment(ndb.Model):
         new_comment = Comment(content = form_data.get(CONTENT),
                               author = user_name,
                               parent = parent_key)
-        comment_num = BlogPost.increment_num_comments(parent_post)
+        comment_num = BlogPost.incr_comments_made(parent_post)
         new_comment.key = ndb.Key("Comment", str(comment_num), parent=parent_key)
         new_comment.put()
         return new_comment.key
@@ -450,6 +479,19 @@ class Comment(ndb.Model):
         comment_entity.content = form_data[CONTENT]
         comment_entity.put()
         return comment_entity
+    
+    @classmethod
+    def delete_comment(cls, comment_key_url_safe):
+        '''
+        Deletes the comment and decrements the number of comments currently
+        outstanding for its parent post.
+        '''
+        comment_entity = ndb.Key(urlsafe = comment_key_url_safe).get()
+        parent_post = comment_entity.key.parent().get()
+        parent_post.cur_num_comments -= 1
+        assert parent_post.cur_num_comments >= 0, "Num comments can't be < 0."
+        comment_entity.key.delete()
+        parent_post.put()
 
 class BlogMainPage(Handler):
     '''
@@ -468,7 +510,8 @@ class BlogMainPage(Handler):
         helper = HandlerHelper(self, ())
         recent_posts = BlogPost.most_recent_20()
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
-                    button_data = self.setup_buttons(recent_posts, helper))
+                    button_data = self.setup_buttons(recent_posts, helper),
+                    user_logged_in = helper.is_logged_in)
         
     def setup_buttons(self, posts_to_render, helper):
         '''
@@ -511,7 +554,8 @@ class BlogMainPage(Handler):
         button_info = self.setup_buttons(recent_posts, helper)
         button_info.update({helper.cur_post.key.urlsafe() : changed_post_dict})
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts = recent_posts,
-                    button_data = button_info)             
+                    button_data = button_info, 
+                    user_logged_in = helper.is_logged_in)             
 
 class NewPost(Handler):
     '''
@@ -558,7 +602,7 @@ class BlogPostDisplay(Handler):
         has comments.
         @param post_entity: the BlogPost entity to be rendered
         '''
-        if post_entity.num_comments == 0:
+        if post_entity.cur_num_comments == 0:
             return POST_ONLY_TEMPLATE
         else:
             return POST_WITH_COMMENTS
@@ -676,9 +720,9 @@ class BlogPostDisplay(Handler):
                     self._renderPostTemplate(helper, comment_key, error_type)
             else:
                 if error_type == POST_DEL_ERROR:
-                    helper.cur_post.key.delete()
+                    BlogPost.delete_post(helper.cur_post)
                 elif error_type == COM_DEL_ERROR:
-                    ndb.Key(urlsafe=del_c).delete()
+                    Comment.delete_comment(del_c)
                 self.redirect(route)
         # End helper functions -------
         

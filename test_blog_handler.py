@@ -284,10 +284,10 @@ class TestComments(TestBlog):
                          "New Comment Content is not corrent, was " +
                          new_comment.content + " but should have been" +
                          " '2nd comment_content'")
-        self.assertEqual(post_key.get().num_comments, 2)
+        self.assertEqual(post_key.get().comments_made, 2)
         self._setPostRequest(self.C_AUTHOR, "3d comment_content", 
                              post_key.urlsafe())
-        self.assertEqual(post_key.get().num_comments, 3)
+        self.assertEqual(post_key.get().comments_made, 3)
         
     
     def testInputVerification(self):
@@ -316,8 +316,8 @@ class TestComments(TestBlog):
         pass
     
     def testDeleteComment(self):
-        # Implement this next round
-        pass
+        self.setUpTest()
+        
     
     def testNumComments(self):
         # test after delete is implemented
