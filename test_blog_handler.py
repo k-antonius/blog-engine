@@ -482,7 +482,7 @@ class testLikeUnlike(TestBlog):
         return blog.app.get_response("/blog/post_id/" + post_key, 
                                      headers=headerList,
                                      POST={"like_button" :
-                                           "text"})
+                                           "like"})
     
     def testLikeVanilla(self):
         '''

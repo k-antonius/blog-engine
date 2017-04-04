@@ -10,11 +10,11 @@
   <div>=============</div>
   {{comment.content}}
   <div><form method="post">
-    <button name="edit_comment" value="{{comment.key.urlsafe()}}" type="submit">
+    <button name="edit_comment" value="edit_comment_{{comment.key.urlsafe()}}" type="submit">
       Edit Comment</button>{{error_map[comment.key.urlsafe()]["edit_comment_error"]}}
   </div>
   <div><form method="post">
-    <button name="delete_comment" value="{{comment.key.urlsafe()}}" type="submit">
+    <button name="delete_comment" value="delete_comment_{{comment.key.urlsafe()}}" type="submit">
       Delete Comment</button>{{error_map[comment.key.urlsafe()]["delete_comment_error"]}}
   </div>
   <div>=============</div>

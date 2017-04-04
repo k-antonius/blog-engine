@@ -46,7 +46,16 @@ PWD_VERIFY = "pwd_verify"
 EMAIL = "email"
 SUBJECT = "subject"
 CONTENT = "content"
-ERROR = "_error"    
+ERROR = "_error"
+EDIT = "edit"
+COMMENT = "comment"
+DELETE = "delete"
+POST = "post"
+LIKE = "like"
+
+# Button Names
+BUTTONS = ("edit_comment", "delete_comment", "edit_post", 
+           "delete_post", "like_button")    
 
 class Handler(webapp2.RequestHandler):
 
@@ -133,10 +142,14 @@ class HandlerHelper(object):
         self.is_logged_in = self._logged_in()
         self.cur_user = self._logged_in_user()
         self.cur_post = self._get_cur_post(post_id)
+        self.cur_comment = None
         self.data_error_msgs = None
         self.valid_data = {}
         self.is_data_valid = False
         self._validate_user_input(field_list)
+        self.POST_subj = None
+        self.POST_action = None
+        self.error_type = None
         
     def set_template_field(self, key, value):
         '''
@@ -208,6 +221,64 @@ class HandlerHelper(object):
         if not self.is_data_valid:
             self.data_error_msgs.update(additional_elements)
             self.handler.render(template, **self.data_error_msgs)
+    
+    def _find_author(self):
+        '''Gets the author of the subject post or comment.
+        '''
+        if self.POST_subj == COMMENT:
+            return self.cur_comment.author
+        else:
+            return self.cur_post.post_author
+        
+    def isCurUserAuthor(self):
+        '''Return true if the current user logged in is the author.
+        Throw an exception if no user is logged in.
+        '''
+        return self.cur_user == self._find_author()
+    
+    def gen_error_msg(self):
+        '''Generates an error message.
+        Args come from button value in POST request.
+        '''
+        base_template = "You must be {status} to {action} a {postORcomm}"
+        not_logged_in = "logged in"
+        not_own_post = "a {postORcomm}'s author"
+        
+        def _choose_error():
+            '''Selects the correct error message.
+            '''
+            if not self.isCurUserAuthor():
+                return not_own_post.format(postORcomm = self.POST_subj)
+            else:
+                return not_logged_in
+            
+        error_msg = base_template.format(status = _choose_error(),
+                                    action = self.POST_action,
+                                    postORcomm = self.POST_subj)
+        template_key = self.POST_action + "_" + self.POST_subj + "_error"
+        self.error_type = template_key
+        self.set_template_field(template_key, error_msg)
+        
+    def get_request_type(self):
+        '''Retrieves a button value from a POST request and updates the
+        POST subj, action, and cur_comment fields.
+        '''
+        get = self.handler.request.get
+        for name in BUTTONS:
+            if len(get(name)) > 0:
+                if LIKE in get(name).lower():
+                    self.POST_subj = LIKE
+                else: 
+                    POST_value = get(name)
+                    temp_list = POST_value.split("_")
+                    self.POST_subj = temp_list[1]
+                    self.POST_action = temp_list[0]
+                    if temp_list[1] == COMMENT:
+                        self.cur_comment = ndb.Key(urlsafe=temp_list[2]).get()
+                    break
+        assert (self.POST_subj and self.POST_action, 
+                "POST values did not update.")
+        
     
 class User(ndb.Model):
     '''
@@ -481,12 +552,11 @@ class Comment(ndb.Model):
         return comment_entity
     
     @classmethod
-    def delete_comment(cls, comment_key_url_safe):
+    def delete_comment(cls, comment_entity):
         '''
         Deletes the comment and decrements the number of comments currently
         outstanding for its parent post.
         '''
-        comment_entity = ndb.Key(urlsafe = comment_key_url_safe).get()
         parent_post = comment_entity.key.parent().get()
         parent_post.cur_num_comments -= 1
         assert parent_post.cur_num_comments >= 0, "Num comments can't be < 0."
@@ -607,8 +677,7 @@ class BlogPostDisplay(Handler):
         else:
             return POST_WITH_COMMENTS
     
-    def _renderPostTemplate(self, helper, comment_key = None,
-                            error_type = None):
+    def _renderPostTemplate(self, helper):
         '''
         Renders a blog post template.
         @param handler: a HandlerHelper instance.
@@ -624,8 +693,9 @@ class BlogPostDisplay(Handler):
             '''
             error_map = dict()
             for comment in comments:
-                error_map.update({comment.key.urlsafe() : dict(edit_comment_error = "",
-                                                               delete_comment_error = "")})
+                error_map.update({comment.key.urlsafe() : 
+                                  dict(edit_comment_error = "",
+                                       delete_comment_error = "")})
             return error_map
         
         error_map = _build_error_map()
@@ -635,11 +705,9 @@ class BlogPostDisplay(Handler):
             Updates the mapping of comment entity key strings to map an error
             message to the correct comment. 
             '''
-            error_msg = helper.valid_data.get(error_type)
-            if error_msg and ("comment" in error_msg):
-                sub_dict = error_map.get(comment_key)
-                sub_dict.update(dict({error_type : error_msg}))
-                error_map.update({comment_key : sub_dict})
+            error_msg = helper.valid_data.get(helper.error_type)
+            if error_msg and helper.POST_subj == COMMENT:
+                error_map[helper.cur_comment.key.urlsafe()] = helper.valid_data
         
         _update_error_map()       
         to_render = dict(current_post = helper.cur_post,
@@ -658,95 +726,45 @@ class BlogPostDisplay(Handler):
         Re-renders the template with appropriate error messages if a user is
         not logged in, attempts to edit another's post, or like own post.
         '''
-        LIKE = "like_button"
-        EDIT_POST = "edit_post"
-        EDIT_COMMENT = "edit_comment"
-        EDIT_ERROR = "edit_error"
-        COM_ERROR = "edit_comment_error"
-        COM_DEL_ERROR = "delete_comment_error"
-        POST_DEL_ERROR = "delete_error"
-        DEL_POST = "delete_post"
-        DEL_COMMENT = "delete_comment"
-        POST_ROUTE = POST_ID + post_key
-        helper = HandlerHelper(self, (), post_key)
-        edit_c = self.request.get(EDIT_COMMENT)
-        del_c = self.request.get(DEL_COMMENT)
-        
-        # Begin helper functions ------
-        def _edit_request(edit_type, error_type, author, route, 
-                          comment_key = None):
-            '''
-            Process an edit request, format an error message or redirect to the
-            appropriate handler.
-            @param edit_type: "post" or "comment"
-            @param error_type: name of the error template field
-            @param comment_key: if the edit request is a comment edit request,
-            the key string of the comment entity must be supplied
-            '''
-            def _format_error_msgs(subject):
-                '''
-                Formats the error messages for attempting to edit a post/comment
-                while not logged in or not an author.
-                @param subject: "post" or "comment"
-                '''
-                not_logged_in = "logged in"
-                not_own_post = "a {subj_type}'s author"
-                
-                def _choose_error():
-                    '''
-                    Selects the correct error message.
-                    '''
-                    if helper.is_logged_in:
-                        return not_logged_in
-                    else:
-                        return not_own_post
-                def _choose_action():
-                    if ((error_type == POST_DEL_ERROR) or 
-                        (error_type == COM_DEL_ERROR)):
-                        return "delete"
-                    else:
-                        return "edit"
-                    
-                error_type_base = ("You must be " + _choose_error() + 
-                                   " to " + _choose_action() 
-                                   + " a {subj_type}.")
-                    
-                return error_type_base.format(error_condition = _choose_error(), 
-                                          subj_type = subject)
-                
-            if not helper.is_logged_in or (author != helper.cur_user):
-                    helper.set_template_field(error_type, 
-                                              _format_error_msgs(edit_type))
-                    self._renderPostTemplate(helper, comment_key, error_type)
-            else:
-                if error_type == POST_DEL_ERROR:
-                    BlogPost.delete_post(helper.cur_post)
-                elif error_type == COM_DEL_ERROR:
-                    Comment.delete_comment(del_c)
-                self.redirect(route)
-        # End helper functions -------
-        
-        if self.request.get(LIKE):
+        helper = HandlerHelper(self, (), post_key)                
+        helper.get_request_type()
+        if helper.POST_subj == LIKE:
             self.update_like(helper)
             self._renderPostTemplate(helper)
+        elif not (helper.isCurUserAuthor() and helper.is_logged_in):
+            helper.gen_error_msg()
+            self._renderPostTemplate(helper)
+        else:
+            if helper.POST_action == DELETE:
+                self._delete(helper)
+                self.redirect(WELCOME)
+            else:
+                self.redirect(self._build_edit_route(helper)) 
                 
-        elif self.request.get(EDIT_POST):
-            route = POST_ROUTE + "/edit"
-            author = helper.cur_post.post_author
-            _edit_request("post", EDIT_ERROR, author, route)
-            
-        elif edit_c:
-            route = POST_ROUTE + "/comment/" + edit_c + "/edit"
-            author = Comment.entity_from_uri(edit_c).author
-            _edit_request("comment", COM_ERROR, author, route, edit_c)
+    def _build_edit_route(self, helper):
+            '''Builds a route for redirecting to the right URI on an edit 
+            request. 
+            @param helper: HandlerHelper instance
+            '''
+            POST_ROUTE = POST_ID + helper.cur_post.key.urlsafe()
+            base_template = POST_ROUTE + "{prefix}/edit"
+            if helper.POST_subj == COMMENT:
+                return base_template.format(prefix="/comment/" + 
+                                            helper.cur_comment.key.urlsafe())
+            else:
+                return base_template.format(prefix = "")
         
-        elif self.request.get(DEL_POST):
-             author = helper.cur_post.post_author
-             _edit_request("post", POST_DEL_ERROR, author, WELCOME)
-        
-        elif del_c:
-            author = Comment.entity_from_uri(del_c).author
-            _edit_request("comment", COM_DEL_ERROR, author, POST_ROUTE, del_c)
+    def _delete(self, helper):
+        '''Determines whether a post or comment is to be deleted and calls
+        the appropriate function.
+        @param helper: HandlerHelper instance
+        '''
+        assert (helper.POST_subj == COMMENT or helper.POST_subj == POST,
+                "wrong string passed; was:" + helper.POST_subj)
+        if helper.POST_subj == COMMENT:
+            Comment.delete_comment(helper.cur_comment)
+        else:
+            BlogPost.delete_post(helper.cur_post)
             
 class EditPost(Handler):
     '''
