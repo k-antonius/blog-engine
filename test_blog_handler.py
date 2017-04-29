@@ -481,8 +481,8 @@ class testLikeUnlike(TestBlog):
         post_key = self._getMockPostKeyStr()
         return blog.app.get_response("/blog/post_id/" + post_key, 
                                      headers=headerList,
-                                     POST={"like_button" :
-                                           "like"})
+                                     POST={"like_post" :
+                                           "like_post_"+ post_key})
     
     def testLikeVanilla(self):
         '''
@@ -528,7 +528,7 @@ class testLikeUnlike(TestBlog):
         '''
         Liking user is logged in, is post's author.
         '''
-        ERROR_MSG = "You cannot like your own post."
+        ERROR_MSG = "You can&#39;t be a post&#39;s author to like a post"
         self._setupTest()
         response = self._setLikeResponse(self.POST_AUTHOR)
         self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
@@ -543,7 +543,7 @@ class testLikeUnlike(TestBlog):
         '''
         Liking user is logged out. Liking user is not post author.
         '''
-        ERROR_MSG = "You must be logged in to like or unlike a post."
+        ERROR_MSG = "You must be logged in to like a post"
         self._setupTest()
         response = self._setLikeResponse(self.OTHER_USER, False)
         self.assertTrue(ERROR_MSG in response.body, "Error msg incorrect" +
