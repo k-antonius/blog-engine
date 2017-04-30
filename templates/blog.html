@@ -2,19 +2,24 @@
 {% block content %}
 	{% for current_post in recent_blog_posts %}
   <div>__________________________________</div>
-  <div><h3><a href="/blog/post_id/{{current_post.key.urlsafe()}}">{{current_post.post_subject}}</a></h3>
-    <a href={{button_data[current_post.key.urlsafe()]["comment_uri"]}}>
-      Comment on this Post</a></div>
-  <br>
+  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}"> {{current_post.post_subject}}</a> </div>
   <div>{{current_post.post_content}}</div>
   <br>
   <div>
     <form method="post">
-      <button name="like_button"
-       type="submit" value="{{current_post.key.urlsafe()}}">
-       {{button_data[current_post.key.urlsafe()]["like_text"]}}</button>
-       {{button_data[current_post.key.urlsafe()]["like_error"]}}
+      <button name="like_post"
+       type="submit" value="like_post_{{current_post.key.urlsafe()}}">
+       {{error_helper.get_like_text(current_post.key.urlsafe())}}</button>
+       {{error_helper.get_error(current_post, "like_post_error")}}
     </form>
+  </div>
+  <div>
+    <form method="post">
+      <button name="comment_post" type="submit"
+      value="comment_post_{{current_post.key.urlsafe()}}">
+        Comment</button>
+        {{error_helper.get_error(current_post, "comment_post_error")}}
+      </form>
   </div>
   <div>__________________________________</div>
   <br>

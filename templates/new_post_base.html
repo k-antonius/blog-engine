@@ -1,23 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
     <div>{{current_post.post_subject}}
-      <a href={{comment_link}}>Comment on this Post</a></div>
     <div>{{current_post.post_content}}</div>
+    <div>
+      <form method="post">
+        <button name="comment_post" type="submit"
+        value="comment_post_{{current_post.key.urlsafe()}}">
+          Comment</button>
+          {{error_helper.get_error(current_post, "comment_post_error")}}
+        </form>
+    </div>
     <div>
       <form method = "post">
         <button name = "edit_post" value="edit_post"
-          type="submit">Edit Post</button>{{edit_post_error}}
+          type="submit">Edit Post</button>
+          {{error_helper.get_error(current_post, "edit_post_error")}}
     </div>
     <div>
       <form method="post">
-        <button name="like_button"
-         type="submit" value="{{like_text}}">{{like_text}}</button>{{like_error}}
+        <button name="like_post"
+         type="submit" value="like_post_{{current_post.key.urlsafe()}}">
+         {{like_text}}</button>
+         {{error_helper.get_error(current_post, "like_post_error")}}
       </form>
     </div>
     <div>
       <form method="post">
         <button name="delete_post" value="delete_post"
-        type="submit">Delete Post</button>{{delete_post_error}}
+        type="submit">Delete Post</button>
+        {{error_helper.get_error(current_post, "delete_post_error")}}
       </form>
     </div>
 		<div id="comment">
