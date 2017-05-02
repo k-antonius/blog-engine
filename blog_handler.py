@@ -664,8 +664,8 @@ class BlogMainPage(Handler):
     def get(self):
         '''Displays the main page, including recent blog posts.
         '''
-        helper = HandlerHelper(self, ())
-        self._render_main_page(helper, ErrorHelper(None, None, None))
+        HandlerHelper(self, ())
+        self._render_main_page(ErrorHelper(None, None, None))
 
     def _render_main_page(self, error_helper_inst):
         '''Convenience function to render the main page.
