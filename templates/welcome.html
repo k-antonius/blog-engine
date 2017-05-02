@@ -1,10 +1,8 @@
-<!DOCTYPE html>
-<html>
-<body>
+{% extends "base.html" %}
+{% block content %}
   <h1>Welcome, {{username}}!</h1>
   <br>
   <a href="/blog">Main Page</a>
   <br>
   <a href="/blog/new_post">Create New Blog Post</a>
-<body>
-</html>
+{% endblock %}

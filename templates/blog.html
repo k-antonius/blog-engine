@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 	{% for current_post in recent_blog_posts %}
-  <div>__________________________________</div>
-  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}"> {{current_post.post_subject}}</a> </div>
+
+  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}">
+    <b>{{current_post.post_subject}}</b></a> </div>
   <div>{{current_post.post_content}}</div>
   <br>
   <div>
@@ -21,7 +22,7 @@
         {{error_helper.get_error(current_post, "comment_post_error")}}
       </form>
   </div>
-  <div>__________________________________</div>
+  <div>_________________________________</div>
   <br>
   {% endfor %}
 {% endblock %}

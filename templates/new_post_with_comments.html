@@ -3,11 +3,11 @@
 {% block comments %}
 <h2>Comments</h2>
 {% for comment in all_comments %}
-  <div>=============</div>
+  <div>_________________________________</div>
   {{comment.author}}:
   <br>
   On: {{comment.date_created}}
-  <div>=============</div>
+  <div>_________________________________</div>
   {{comment.content}}
   <div><form method="post">
     <button name="edit_comment"
@@ -21,7 +21,7 @@
       Delete Comment</button>{{error_helper.get_error(comment,
                                "delete_comment_error")}}
   </div>
-  <div>=============</div>
+  <div>_________________________________</div>
 
 {% endfor %}
 {% endblock %}
