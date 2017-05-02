@@ -81,12 +81,17 @@ class Handler(webapp2.RequestHandler):
     '''
 
     def render(self, template, **template_fields):
-        '''Prepares a template for rendering and renders the template.
+        '''Prepares a template for rendering and renders the template. Updates
+        the template fields dict with a boolean for whether a user is logged in
+        used with rendering the menu bar on all pages.
         @param template: the template html
         @param template_fields: dictionary of arguments where keys match
         template variables and values are the strings to render in place of
         those variables.
         '''
+
+        template_fields.update(dict(
+            logged_in=CookieUtil.get_cookie(USER, self)))
 
         def _render_template():
             '''Helper function to load and render template.
