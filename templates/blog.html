@@ -2,7 +2,7 @@
 {% block content %}
 	{% for current_post in recent_blog_posts %}
 
-  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}">
+  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}/display">
     <b>{{current_post.post_subject}}</b></a> </div>
   <div>{{current_post.post_content}}</div>
   <br>

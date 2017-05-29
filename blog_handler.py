@@ -15,8 +15,10 @@ Created on Jan 7, 2017
 # imports
 import os
 import re
+from functools import wraps
 import jinja2
 import webapp2
+from webapp2_extras import routes
 from google.appengine.ext import ndb
 from blog_utilities import CookieUtil, PwdUtil
 from google.appengine.ext.datastore_admin.config import current
@@ -41,18 +43,17 @@ COMMENT_TEMPLATE = "new_comment.html"
 
 
 # URI Routes
-HOME = "/blog"
-NEW_POST = HOME + "/new_post"
-SIGN_UP = HOME + "/signup"
-WELCOME = HOME + "/user_welcome"
-LOGIN = HOME + "/login"
-LOGOUT = HOME + "/logout"
-POST_ID = HOME + "/post_id/"  # N.B. the final "/" - never terminates URI
-POST_DISPLAY = r"/blog/post_id/(\w+-\w+|\w+)"
-NEW_COMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment"
-EDIT_COMMENT = r"/blog/post_id/(\w+-\w+|\w+)/comment/(\w+-\w+|\w+)/edit"
-EDIT_POST = r"/blog/post_id/(\w+-\w+|\w+)/edit"
-
+HOME = "home"
+NEW_POST = "new_post"
+SIGNUP = "signup"
+WELCOME = "welcome"
+LOGIN = "login"
+LOGOUT = "logout"
+DISPLAY_POST = "display_post"
+NEW_COMMENT = "new_comment"
+EDIT_COMMENT = "edit_comment"
+EDIT_POST = "edit_post"
+LIKE_POST = "like_post"
 
 # Form Input Fields
 USER = "username"
@@ -68,6 +69,11 @@ DELETE = "delete"
 POST = "post"
 LIKE = "like"
 LIKE_TEXT = "like_text"
+
+# Errors
+LOGIN_ERROR = "login_error"
+OWN_POST = "own_post"
+NOT_AUTHOR = "not_author"
 
 
 # Button Names
@@ -100,6 +106,40 @@ class Handler(webapp2.RequestHandler):
             return template_to_render.render(template_fields)
 
         self.response.out.write(_render_template())
+        
+    
+            
+def check_logged_in(handler_fun):
+    '''Decorator that checks if a user is logged in and redirects to the 
+    signup handler if a user is not.
+    @param handler_fun: the handler function to be wrapped
+    '''
+    
+    @wraps(handler_fun)
+    def wrapper(self, *args, **kwargs):
+        post_key = self.request.route_args[0]
+        helper = HandlerHelper(self, [], post_key)
+        if not helper.is_logged_in:
+            self.redirect(self.uri_for(SIGNUP, LOGIN_ERROR))
+        else:
+            handler_fun(self, *args, **kwargs)
+    return wrapper
+
+def check_not_author(handler_fun):
+    '''Decorator to check that the current user is not the author of the
+    post or comment entity being accessed.
+    @param handler_fun: the handler function to be wrapped
+    '''
+    
+    @wraps(handler_fun)
+    def wrapper(self, *args, **kwargs):
+        post_key = args[0]
+        helper = HandlerHelper(self, [], post_key)
+        if helper._is_cur_user_author():
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
+        else:
+            handler_fun(self, *args, **kwargs)
+        return wrapper
 
 
 class HandlerHelper(object):
@@ -316,7 +356,6 @@ class HandlerHelper(object):
         '''
         return self.valid_data.get(self.error_type)
 
-
 class ErrorHelper(object):
     '''Stores error messages for individual database entities. Useful for
     passing error messages to the template.
@@ -370,6 +409,30 @@ class ErrorHelper(object):
         which to retrieve the like status
         '''
         return self._like_text_map.get(current_post_key)
+
+class LikePost(Handler):
+    '''Handles requests to like posts. Checks if the current user has 
+    permission to like the post. Likes the post if the post is not 
+    already liked and vice versa.
+    Receives requests on two URIs /home and /post_display.
+    '''
+    
+    @check_not_author
+    @check_logged_in
+    def post(self, post_key, origin):
+        helper = HandlerHelper(self, [], post_key)
+        
+#         if not helper.is_logged_in:
+#             self.redirect_to(SIGNUP, LOGIN_ERROR)
+#         elif helper._is_cur_user_author():
+#             self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
+#         else:
+        BlogPost.add_like_unlike(helper.cur_post, helper.cur_user, 
+                                 helper.gen_like_text())
+        if origin == HOME:
+            self.redirect_to(HOME)
+        elif origin == DISPLAY_POST:
+            self.redirect_to(self.uri_for(DISPLAY_POST, post_key))
 
 
 class User(ndb.Model):
@@ -666,7 +729,7 @@ class BlogMainPage(Handler):
     '''Class to handle requests on the main page.
     '''
 
-    def get(self):
+    def get(self, **kw):
         '''Displays the main page, including recent blog posts.
         '''
         HandlerHelper(self, ())
@@ -697,8 +760,7 @@ class BlogMainPage(Handler):
             error_helper = ErrorHelper(None, None, None)
             self._render_main_page(error_helper)
         else:
-            post_route = POST_ID + helper.cur_post.key.urlsafe()
-            self.redirect(post_route + "/" + COMMENT)
+            self.redirect_to(NEW_COMMENT, helper.cur_post.key.urlsafe()) 
 
 
 class NewPost(Handler):
@@ -712,7 +774,7 @@ class NewPost(Handler):
         if helper.is_logged_in:
             self.render(NEW_POST_TEMPLATE)
         else:
-            self.redirect(SIGN_UP)
+            self.redirect_to(SIGNUP, "")
 
     def post(self):
         '''Handles form submission of new blog post form.
@@ -721,7 +783,7 @@ class NewPost(Handler):
         if helper.is_logged_in and helper.is_data_valid:
             new_post_key = BlogPost.create_new_post(helper.cur_user,
                                                     helper.valid_data)
-            self.redirect(POST_ID + new_post_key.urlsafe())
+            self.redirect_to(DISPLAY_POST, new_post_key.urlsafe())
         else:
             helper.validate_form_input(NEW_POST_TEMPLATE)
 
@@ -733,12 +795,18 @@ class BlogPostDisplay(Handler):
     delete existing comments.
     '''
 
-    def get(self, post_key):
+    def get(self, post_key, error):
         '''Renders an individual blog post and all comments made on that post.
         @param post_key: the url key from the uri of for the post being viewed
         '''
         helper = HandlerHelper(self, (), post_key)
-        self._render_post_template(helper, ErrorHelper(None, None, None))
+        if error == OWN_POST:
+            error_helper = ErrorHelper("You cannot like your own post.",
+                                       "like_post_error",
+                                       post_key)
+        else:
+            error_helper = ErrorHelper(None, None, None)
+        self._render_post_template(helper, error_helper)
 
     def _choose_template(self, post_entity):
         '''Returns the proper template for rendering based on whether this post
@@ -764,52 +832,54 @@ class BlogPostDisplay(Handler):
         self.render(self._choose_template(helper.cur_post),
                     **to_render)
 
-    def post(self, post_key):
-        '''Handles requests to like/unlike a post, or edit/delete
-        a post/comment, and make new comment.
-        @param post_key: the url key from the uri of for the post being viewed
-        '''
-        helper = HandlerHelper(self, (), post_key)
-        helper.get_request_type()
-        if (not helper.is_logged_in) or helper.detect_user_id_error():
-
-            def _get_cur_action_key():
-                '''Return the key of the current button request's subject.
-                '''
-                if helper.button_subj == COMMENT:
-                    return helper.cur_comment.key.urlsafe()
-                else:
-                    return helper.cur_post.key.urlsafe()
-
-            helper.gen_error_msg()
-            error_helper = ErrorHelper(helper.get_button_error(),
-                                       helper.error_type,
-                                       _get_cur_action_key())
-            self._render_post_template(helper, error_helper)
-        elif helper.button_action == LIKE:
-            helper.update_like()
-            self._render_post_template(helper, ErrorHelper(None, None, None))
-        elif helper.button_action == DELETE:
-            self._delete(helper)
-            self.redirect(WELCOME) # re-direct to allow DB time to update.
-        else:
-            self.redirect(self._build_edit_route(helper))
+#     def post(self, post_key):
+#         '''Handles requests to like/unlike a post, or edit/delete
+#         a post/comment, and make new comment.
+#         @param post_key: the url key from the uri of for the post being viewed
+#         '''
+#         helper = HandlerHelper(self, (), post_key)
+#         helper.get_request_type()
+# #         if (not helper.is_logged_in) or helper.detect_user_id_error():
+# # 
+# #             def _get_cur_action_key():
+# #                 '''Return the key of the current button request's subject.
+# #                 '''
+# #                 if helper.button_subj == COMMENT:
+# #                     return helper.cur_comment.key.urlsafe()
+# #                 else:
+# #                     return helper.cur_post.key.urlsafe()
+# # 
+# #             helper.gen_error_msg()
+# #             error_helper = ErrorHelper(helper.get_button_error(),
+# #                                        helper.error_type,
+# #                                        _get_cur_action_key())
+# #             self._render_post_template(helper, error_helper)
+# #         elif helper.button_action == LIKE:
+# #             helper.update_like()
+# #             self._render_post_template(helper, ErrorHelper(None, None, None))
+#         elif helper.button_action == DELETE:
+#             self._delete(helper)
+#             self.redirect_to(WELCOME) # re-direct to allow DB time to update.
+#         else:
+#             self.redirect(self._build_edit_route(helper))
 
     def _build_edit_route(self, helper):
         '''Builds a route for redirecting to the right URI on an edit
         request.
         @param helper: HandlerHelper instance
         '''
-        post_route = POST_ID + helper.cur_post.key.urlsafe()
-        if helper.button_action == COMMENT:
-            return post_route + "/" + COMMENT
-        else:
-            base_template = post_route + "{prefix}/edit"
-            if helper.button_subj == COMMENT:
-                return base_template.format(prefix="/comment/" +
-                                            helper.cur_comment.key.urlsafe())
-            else:
-                return base_template.format(prefix="")
+        pass
+#         post_route = POST_ID + helper.cur_post.key.urlsafe()
+#         if helper.button_action == COMMENT:
+#             return post_route + "/" + COMMENT
+#         else:
+#             base_template = post_route + "{prefix}/edit"
+#             if helper.button_subj == COMMENT:
+#                 return base_template.format(prefix="/comment/" +
+#                                             helper.cur_comment.key.urlsafe())
+#             else:
+#                 return base_template.format(prefix="")
+
 
     def _delete(self, helper):
         '''Determines whether a post or comment is to be deleted and calls
@@ -837,7 +907,7 @@ class EditPost(Handler):
             self.render(NEW_POST_TEMPLATE, subject=helper.cur_post.post_subject,
                         content=helper.cur_post.post_content)
         else:
-            self.redirect(SIGN_UP)
+            self.redirect_to(SIGNUP)
 
     def post(self, post_key):
         '''Handles submission of edited post form. Validates form data and
@@ -847,7 +917,7 @@ class EditPost(Handler):
         helper = HandlerHelper(self, (SUBJECT, CONTENT), post_key)
         if helper.is_logged_in and helper.is_data_valid:
             BlogPost.update_post(helper.cur_post, helper.valid_data)
-            self.redirect(POST_ID + post_key)
+            self.redirect_to(DISPLAY_POST, post_key)
         else:
             helper.validate_form_input(NEW_POST_TEMPLATE)
 
@@ -857,16 +927,16 @@ class Signup(Handler):
     Class to handle requests to sign up for a new account.
     '''
 
-    def get(self):
+    def get(self, *args):
         '''Handles requets to display the new user signup form.
         '''
         helper = HandlerHelper(self, ())
         if helper.is_logged_in:
-            self.redirect(WELCOME)
+            self.redirect_to(WELCOME)
         else:
             self.render(SIGNUP_TEMPLATE)
 
-    def post(self):
+    def post(self, *args):
         '''Handles submission of the new user signup form. Verifies the form
         input and creates the new user account.
         '''
@@ -899,7 +969,7 @@ class NewComment(Handler):
             self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
                         error_helper=ErrorHelper(None, None, None))
         else:
-            self.redirect(SIGN_UP)
+            self.redirect_to(SIGNUP)
 
     def post(self, post_key):
         '''Handles form submission of new comment.
@@ -911,7 +981,7 @@ class NewComment(Handler):
         if helper.is_data_valid:
             Comment.create_new_comment(helper.cur_user,
                                        post_key, helper.valid_data)
-            self.redirect(POST_ID + post_key)
+            self.redirect_to(DISPLAY_POST, post_key)
 
 class EditComment(Handler):
     '''Handles requests to edit a comment.
@@ -935,7 +1005,7 @@ class EditComment(Handler):
             cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
             self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
                         content=cur_comment.content)
-        else: self.redirect(SIGN_UP)
+        else: self.redirect_to(SIGNUP)
 
     def post(self, *key_list):
         '''Handles submission of edited comment form. Validates data submitted and
@@ -946,7 +1016,7 @@ class EditComment(Handler):
         if helper.is_logged_in and helper.is_data_valid:
             cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
             Comment.update_comment(cur_comment, helper.valid_data)
-            self.redirect(POST_ID + key_list[self.POST_KEY])
+            self.redirect_to(DISPLAY_POST, key_list[self.POST_KEY])
         else:
             helper.validate_form_input(COMMENT_TEMPLATE,
                                        current_post=helper.cur_post)
@@ -1009,7 +1079,7 @@ class Logout(Handler):
         '''Logs the user out and redirects to the signup page.
         '''
         CookieUtil.set_cookie(USER, "", self)
-        self.redirect(SIGN_UP)
+        self.redirect_to(SIGNUP)
 
 
 class FormHelper(object):
@@ -1078,13 +1148,33 @@ class FormHelper(object):
         return to_render
 
 # register page handlers
-app = webapp2.WSGIApplication([(HOME, BlogMainPage),
-                               (NEW_POST, NewPost),
-                               (POST_DISPLAY, BlogPostDisplay),
-                               (NEW_COMMENT, NewComment),
-                               (EDIT_COMMENT, EditComment),
-                               (EDIT_POST, EditPost),
-                               (SIGN_UP, Signup),
-                               (WELCOME, Welcome),
-                               (LOGIN, Login),
-                               (LOGOUT, Logout)], debug=True)
+# app = webapp2.WSGIApplication([(HOME, BlogMainPage),
+#                                (NEW_POST, NewPost),
+#                                (POST_DISPLAY, BlogPostDisplay),
+#                                (NEW_COMMENT, NewComment),
+#                                (EDIT_COMMENT, EditComment),
+#                                (EDIT_POST, EditPost),
+#                                (SIGN_UP, Signup),
+#                                (WELCOME, Welcome),
+#                                (LOGIN, Login),
+#                                (LOGOUT, Logout)], debug=True)
+app = webapp2.WSGIApplication([
+    routes.PathPrefixRoute("/blog", [
+        webapp2.Route("/", BlogMainPage, HOME),
+        webapp2.Route("/new_post", NewPost, NEW_POST),
+        routes.PathPrefixRoute("/post_id/<:\w+-\w+|\w+>", [
+            webapp2.Route("/display/<:\w+>", BlogPostDisplay, DISPLAY_POST),
+            webapp2.Route("/comment", NewComment, NEW_COMMENT),
+            webapp2.Route("/comment/<:(\w+-\w+|\w+)>/edit", 
+                          EditComment, EDIT_COMMENT),
+            webapp2.Route("/edit", EditPost, EDIT_POST),
+            webapp2.Route("/like_post/<:\w+>", LikePost, LIKE_POST)]),
+        webapp2.Route("/user_welcome", Welcome, WELCOME),
+        webapp2.Route("/login", Login, LOGIN),
+        webapp2.Route("/logout", Logout, LOGOUT),
+        webapp2.Route("/signup/<:\w+>", Signup, SIGNUP)
+    ])
+])
+
+
+

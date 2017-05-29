@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-    <div>{{current_post.post_subject}}
+    <div>{{current_post.post_subject}}</div>
     <div>{{current_post.post_content}}</div>
+    <div>
+      <form method="post" action = "../like_post/display_post">
+        <button name="like_post"
+         type="submit" value="like_post_{{current_post.key.urlsafe()}}">
+         {{like_text}}</button>
+         {{error_helper.get_error(current_post, "like_post_error")}}
+      </form>
+    </div>
     <div>
       <form method="post">
         <button name="comment_post" type="submit"
@@ -11,25 +19,17 @@
         </form>
     </div>
     <div>
-      <form method = "post">
-        <button name = "edit_post" value="edit_post"
-          type="submit">Edit Post</button>
-          {{error_helper.get_error(current_post, "edit_post_error")}}
-    </div>
-    <div>
-      <form method="post">
-        <button name="like_post"
-         type="submit" value="like_post_{{current_post.key.urlsafe()}}">
-         {{like_text}}</button>
-         {{error_helper.get_error(current_post, "like_post_error")}}
-      </form>
-    </div>
-    <div>
       <form method="post">
         <button name="delete_post" value="delete_post"
         type="submit">Delete Post</button>
         {{error_helper.get_error(current_post, "delete_post_error")}}
       </form>
+    </div>
+    <div>
+      <form method = "post">
+        <button name = "edit_post" value="edit_post"
+          type="submit">Edit Post</button>
+          {{error_helper.get_error(current_post, "edit_post_error")}}
     </div>
 		<div id="comment">
 			{% block comments %}
