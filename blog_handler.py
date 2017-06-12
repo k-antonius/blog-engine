@@ -681,7 +681,7 @@ class DeletePost(Handler):
     @Handler.check_logged_in
     def post(self, post_key):
         BlogPost.delete_post(ndb.Key(urlsafe=post_key).get())
-        self.redirect(self.uri_for(HOME))
+        self.redirect(self.uri_for(HOME, HOME))
 
 class DeleteComment(Handler):
     '''Handles deletion of comments.
