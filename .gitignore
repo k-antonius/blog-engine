@@ -5,3 +5,4 @@ blog_utilities.pyc
 test_blog_handler.pyc
 secure_key.py
 secure_key.pyc
+ndb_models.pyc
