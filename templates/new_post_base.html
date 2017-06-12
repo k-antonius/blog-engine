@@ -2,35 +2,38 @@
 {% block content %}
     <div>{{current_post.post_subject}}</div>
     <div>{{current_post.post_content}}</div>
-    <div>
-      <form method="post" action = "../like_post/display_post">
-        <button name="like_post"
-         type="submit" value="like_post_{{current_post.key.urlsafe()}}">
-         {{like_text}}</button>
-         {{error_helper.get_error(current_post, "like_post_error")}}
-      </form>
-    </div>
-    <div>
-      <form method="post">
-        <button name="comment_post" type="submit"
-        value="comment_post_{{current_post.key.urlsafe()}}">
-          Comment</button>
-          {{error_helper.get_error(current_post, "comment_post_error")}}
+    <table>
+      <tr>
+        <td>
+        <form method="post" action = "../like_post/display_post">
+          <button name="like_post"
+           type="submit" value="like_post_{{current_post.key.urlsafe()}}">
+           {{like_text}}</button>
         </form>
-    </div>
-    <div>
-      <form method="post">
-        <button name="delete_post" value="delete_post"
-        type="submit">Delete Post</button>
-        {{error_helper.get_error(current_post, "delete_post_error")}}
-      </form>
-    </div>
-    <div>
-      <form method = "post">
-        <button name = "edit_post" value="edit_post"
-          type="submit">Edit Post</button>
-          {{error_helper.get_error(current_post, "edit_post_error")}}
-    </div>
+      </td>
+      <td>
+        <form method="get" action = "../comment/new/display_post">
+          <button name="comment_post" type="submit"
+          value="comment_post_{{current_post.key.urlsafe()}}">
+            Comment</button>
+          </form>
+      </td>
+      <td>
+        <form method="post" action = "../delete">
+          <button name="delete_post" value="delete_post"
+          type="submit">Delete Post</button>
+        </form>
+      </td>
+      <td>
+        <form method = "get" action = "../edit">
+          <button name = "edit_post" value="edit_post"
+            type="submit">Edit Post</button>
+        </form>
+      </td>
+    </tr>
+  </table>
+{{error_helper.get_error(current_post)}}
+
 		<div id="comment">
 			{% block comments %}
 			{% endblock %}

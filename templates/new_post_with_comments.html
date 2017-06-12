@@ -3,24 +3,30 @@
 {% block comments %}
 <h2>Comments</h2>
 {% for comment in all_comments %}
-  <div>_________________________________</div>
-  {{comment.author}}:
-  <br>
   On: {{comment.date_created}}
-  <div>_________________________________</div>
+  <br>
+  {{comment.author}} said:
+  <br>
   {{comment.content}}
-  <div><form method="post">
-    <button name="edit_comment"
-    value="edit_comment_{{comment.key.urlsafe()}}" type="submit">
-      Edit Comment</button>{{error_helper.get_error(comment,
-        "edit_comment_error")}}
-  </div>
-  <div><form method="post">
-    <button name="delete_comment"
-    value="delete_comment_{{comment.key.urlsafe()}}" type="submit">
-      Delete Comment</button>{{error_helper.get_error(comment,
-                               "delete_comment_error")}}
-  </div>
+  <table>
+    <tr>
+      <td>
+        <form method="get" action="../comment/edit">
+          <button name="comment_key"
+          value="{{comment.key.urlsafe()}}" type="submit">
+          Edit Comment</button>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="../comment/delete">
+          <button name="comment_key"
+          value="{{comment.key.urlsafe()}}" type="submit">
+          Delete Comment</button>
+        </form>
+      </td>
+    </tr>
+  </table>
+{{error_helper.get_error(comment)}}
   <div>_________________________________</div>
 
 {% endfor %}

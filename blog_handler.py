@@ -22,6 +22,7 @@ from webapp2_extras import routes
 from google.appengine.ext import ndb
 from blog_utilities import CookieUtil, PwdUtil
 from google.appengine.ext.datastore_admin.config import current
+import time
 
 
 # Template constants
@@ -44,6 +45,7 @@ COMMENT_TEMPLATE = "new_comment.html"
 
 # URI Routes
 HOME = "home"
+HOME_ERROR = "home_error"
 NEW_POST = "new_post"
 SIGNUP = "signup"
 WELCOME = "welcome"
@@ -54,6 +56,8 @@ NEW_COMMENT = "new_comment"
 EDIT_COMMENT = "edit_comment"
 EDIT_POST = "edit_post"
 LIKE_POST = "like_post"
+DELETE_POST = "delete_post"
+DELETE_COMMENT = "delete_comment"
 
 # Form Input Fields
 USER = "username"
@@ -70,10 +74,12 @@ POST = "post"
 LIKE = "like"
 LIKE_TEXT = "like_text"
 
-# Errors
-LOGIN_ERROR = "login_error"
+# URI status terminators
+ACCESS_ERROR = "access_error"
 OWN_POST = "own_post"
 NOT_AUTHOR = "not_author"
+DISPLAY = "display"
+
 
 
 # Button Names
@@ -106,40 +112,65 @@ class Handler(webapp2.RequestHandler):
             return template_to_render.render(template_fields)
 
         self.response.out.write(_render_template())
+    
+    @classmethod
+    def check_logged_in(cls, handler_fun):
+        '''Decorator that checks if a user is logged in and redirects to the 
+        signup handler if a user is not.
+        @param handler_fun: the handler function to be wrapped
+        '''
         
-    
-            
-def check_logged_in(handler_fun):
-    '''Decorator that checks if a user is logged in and redirects to the 
-    signup handler if a user is not.
-    @param handler_fun: the handler function to be wrapped
-    '''
-    
-    @wraps(handler_fun)
-    def wrapper(self, *args, **kwargs):
-        post_key = self.request.route_args[0]
-        helper = HandlerHelper(self, [], post_key)
-        if not helper.is_logged_in:
-            self.redirect(self.uri_for(SIGNUP, LOGIN_ERROR))
-        else:
-            handler_fun(self, *args, **kwargs)
-    return wrapper
-
-def check_not_author(handler_fun):
-    '''Decorator to check that the current user is not the author of the
-    post or comment entity being accessed.
-    @param handler_fun: the handler function to be wrapped
-    '''
-    
-    @wraps(handler_fun)
-    def wrapper(self, *args, **kwargs):
-        post_key = args[0]
-        helper = HandlerHelper(self, [], post_key)
-        if helper._is_cur_user_author():
-            self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
-        else:
-            handler_fun(self, *args, **kwargs)
+        @wraps(handler_fun)
+        def wrapper(self, *args, **kwargs):
+            post_key = self.request.route_args[0]
+            helper = HandlerHelper(self, [], post_key)
+            if not helper.is_logged_in:
+                self.redirect(self.uri_for(SIGNUP, ACCESS_ERROR))
+            else:
+                handler_fun(self, *args, **kwargs)
         return wrapper
+
+    @classmethod
+    def check_not_author(cls, handler_fun):
+        '''Decorator to check that the current user is not the author of the
+        post or comment entity being accessed.
+        @param handler_fun: the handler function to be wrapped
+        '''
+        
+        @wraps(handler_fun)
+        def wrapper(self, *args, **kwargs):
+            post_key = args[0]
+            origin = args[1]
+            helper = HandlerHelper(self, [], post_key)
+            if helper._is_cur_user_author():
+                if origin == DISPLAY_POST:
+                    self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
+                elif origin == HOME:
+                    self.redirect(self.uri_for(HOME_ERROR, post_key))
+            else:
+                handler_fun(self, *args, **kwargs)
+        return wrapper
+
+    @classmethod
+    def check_is_author(cls, entity_type):
+        '''Parameterized decorator to check that the current user is the author 
+        of the post or comment entity being accessed.
+        @param handler_fun: the handler function to be wrapped
+        @param entity_type: The type of the entity being accessed, use one of 
+        the global constants POST, COMMENT etc.
+        '''
+        def takes_function(handler_fun):
+            @wraps(handler_fun)
+            def wrapper(self, *args, **kwargs):
+                post_key = args[0]
+                helper = HandlerHelper(self, [], post_key)
+                if not helper._is_cur_user_author():
+                    self.redirect(self.uri_for(DISPLAY_POST, post_key, 
+                                               NOT_AUTHOR + "_" + entity_type))
+                else:
+                    handler_fun(self, *args, **kwargs)
+            return wrapper
+        return takes_function
 
 
 class HandlerHelper(object):
@@ -367,7 +398,7 @@ class ErrorHelper(object):
         _like_text_map: dict for rendering like buttons to main page
     '''
 
-    def __init__(self, error_msg, error_type, entity_id):
+    def __init__(self, error_msg, entity_id):
         '''
         Create a new error helper instance holding an error message.
         @param error_msg: error message text
@@ -375,17 +406,15 @@ class ErrorHelper(object):
         @param entity_id: the url key id of the NDB entity re: the message
         '''
         self._message = error_msg
-        self._error_type = error_type
         self._target_id = entity_id
         self._like_text_map = None
 
-    def get_error(self, current_entity, current_error):
+    def get_error(self, current_entity):
         '''Return an error message if one is required.
         @param current_entity: the database entity whose data is being rendered
         @param current_error: type of the error message to render
         '''
-        if ((current_entity.key.urlsafe() == self._target_id) and
-                (current_error == self._error_type)):
+        if current_entity.key.urlsafe() == self._target_id:
             return self._message
         else:
             return ""
@@ -417,22 +446,18 @@ class LikePost(Handler):
     Receives requests on two URIs /home and /post_display.
     '''
     
-    @check_not_author
-    @check_logged_in
+    @Handler.check_not_author
+    @Handler.check_logged_in
     def post(self, post_key, origin):
         helper = HandlerHelper(self, [], post_key)
-        
-#         if not helper.is_logged_in:
-#             self.redirect_to(SIGNUP, LOGIN_ERROR)
-#         elif helper._is_cur_user_author():
-#             self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
-#         else:
         BlogPost.add_like_unlike(helper.cur_post, helper.cur_user, 
                                  helper.gen_like_text())
         if origin == HOME:
-            self.redirect_to(HOME)
-        elif origin == DISPLAY_POST:
-            self.redirect_to(self.uri_for(DISPLAY_POST, post_key))
+            # remove this in deployment
+            time.sleep(0.1)
+            return self.redirect(self.uri_for(HOME, "update"))
+        elif origin == DISPLAY_POST or origin == OWN_POST:
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
 
 
 class User(ndb.Model):
@@ -729,11 +754,15 @@ class BlogMainPage(Handler):
     '''Class to handle requests on the main page.
     '''
 
-    def get(self, **kw):
+    def get(self, status):
         '''Displays the main page, including recent blog posts.
         '''
+        if status == HOME:
+            helper =  ErrorHelper(None, None)
+        else:
+            helper = ErrorHelper("You cannot like your own post", status)
         HandlerHelper(self, ())
-        self._render_main_page(ErrorHelper(None, None, None))
+        self._render_main_page(helper)
 
     def _render_main_page(self, error_helper_inst):
         '''Convenience function to render the main page.
@@ -744,23 +773,23 @@ class BlogMainPage(Handler):
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts=recent_posts,
                     error_helper=error_helper_inst)
 
-    def post(self):
-        '''Handles requests to like posts and initiate a comment on a post.
-        '''
-        helper = HandlerHelper(self, [])
-        helper.get_request_type()
-        if (not helper.is_logged_in) or helper.detect_user_id_error():
-            helper.gen_error_msg()
-            error_helper = ErrorHelper(helper.get_button_error(),
-                                       helper.error_type,
-                                       helper.cur_post.key.urlsafe())
-            self._render_main_page(error_helper)
-        elif helper.button_action == LIKE:
-            helper.update_like()
-            error_helper = ErrorHelper(None, None, None)
-            self._render_main_page(error_helper)
-        else:
-            self.redirect_to(NEW_COMMENT, helper.cur_post.key.urlsafe()) 
+#     def post(self):
+#         '''Handles requests to like posts and initiate a comment on a post.
+#         '''
+#         helper = HandlerHelper(self, [])
+#         helper.get_request_type()
+#         if (not helper.is_logged_in) or helper.detect_user_id_error():
+#             helper.gen_error_msg()
+#             error_helper = ErrorHelper(helper.get_button_error(),
+#                                        helper.cur_post.key.urlsafe())
+#             self._render_main_page(error_helper)
+#         elif helper.button_action == LIKE:
+#             helper.update_like()
+#             error_helper = ErrorHelper(None, None)
+#             self._render_main_page(error_helper)
+#         else:
+#             self.redirect(self.uri_for(NEW_COMMENT, 
+#                                        helper.cur_post.key.urlsafe())) 
 
 
 class NewPost(Handler):
@@ -783,7 +812,8 @@ class NewPost(Handler):
         if helper.is_logged_in and helper.is_data_valid:
             new_post_key = BlogPost.create_new_post(helper.cur_user,
                                                     helper.valid_data)
-            self.redirect_to(DISPLAY_POST, new_post_key.urlsafe())
+            self.redirect(self.uri_for(DISPLAY_POST, new_post_key.urlsafe(),
+                                       DISPLAY))
         else:
             helper.validate_form_input(NEW_POST_TEMPLATE)
 
@@ -802,10 +832,14 @@ class BlogPostDisplay(Handler):
         helper = HandlerHelper(self, (), post_key)
         if error == OWN_POST:
             error_helper = ErrorHelper("You cannot like your own post.",
-                                       "like_post_error",
                                        post_key)
+        elif "not_author" in error:
+            entity_type = self.parse_url_error(error)
+            error_helper = ErrorHelper("You must be a " + 
+                                       entity_type +"'s author " + 
+                                       "to do that.", post_key)
         else:
-            error_helper = ErrorHelper(None, None, None)
+            error_helper = ErrorHelper(None, None)
         self._render_post_template(helper, error_helper)
 
     def _choose_template(self, post_entity):
@@ -831,6 +865,10 @@ class BlogPostDisplay(Handler):
         to_render.update(helper.valid_data)
         self.render(self._choose_template(helper.cur_post),
                     **to_render)
+        
+    def parse_url_error(self, error_string):
+        split_text = error_string.split("_")
+        return split_text[2]
 
 #     def post(self, post_key):
 #         '''Handles requests to like/unlike a post, or edit/delete
@@ -897,29 +935,52 @@ class BlogPostDisplay(Handler):
 class EditPost(Handler):
     '''Class to handle rendering and submission of edit post form.
     '''
-
+    
+    @Handler.check_is_author(POST)
+    @Handler.check_logged_in
     def get(self, post_key):
         '''Handles requests to display the edit post form.
         @param post_key: string id of a BlogPost entity supplied in the URI
         '''
         helper = HandlerHelper(self, (), post_key)
-        if helper.is_logged_in:
-            self.render(NEW_POST_TEMPLATE, subject=helper.cur_post.post_subject,
-                        content=helper.cur_post.post_content)
-        else:
-            self.redirect_to(SIGNUP)
+        self.render(NEW_POST_TEMPLATE, subject=helper.cur_post.post_subject,
+                    content=helper.cur_post.post_content)
 
+    @Handler.check_is_author(POST)
+    @Handler.check_logged_in
     def post(self, post_key):
         '''Handles submission of edited post form. Validates form data and
         submits edited content to the database.
         @param post_key: string id of a BlogPost entity supplied in the URI
         '''
         helper = HandlerHelper(self, (SUBJECT, CONTENT), post_key)
-        if helper.is_logged_in and helper.is_data_valid:
+        if helper.is_data_valid:
             BlogPost.update_post(helper.cur_post, helper.valid_data)
-            self.redirect_to(DISPLAY_POST, post_key)
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
         else:
             helper.validate_form_input(NEW_POST_TEMPLATE)
+
+
+class DeletePost(Handler):
+    '''Handles deletion of posts
+    '''
+    
+    @Handler.check_is_author(POST)
+    @Handler.check_logged_in
+    def post(self, post_key):
+        BlogPost.delete_post(ndb.Key(urlsafe=post_key).get())
+        self.redirect(self.uri_for(HOME))
+
+class DeleteComment(Handler):
+    '''Handles deletion of comments.
+    '''
+    
+    @Handler.check_is_author(COMMENT)
+    @Handler.check_logged_in
+    def post(self, post_key):
+        comment_key = self.request.get("comment_key")
+        Comment.delete_comment(ndb.Key(urlsafe=comment_key).get())
+        self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
 
 
 class Signup(Handler):
@@ -958,22 +1019,23 @@ class NewComment(Handler):
     '''Class to handle requets to make a new comment on a post.
     '''
 
-    def get(self, post_key):
+    @Handler.check_logged_in
+    def get(self, post_key, origin):
         '''Displays the form to add a new comment to a blog post. If a user
         attempts to visit this page without being logged in, they are directed
         to the signup page.
         @param post_key: string id of a BlogPost entity supplied in the URI
+        @param origin: the leaf of the URI tree where this request originated
         '''
         helper = HandlerHelper(self, (), post_key)
-        if helper.is_logged_in:
-            self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
-                        error_helper=ErrorHelper(None, None, None))
-        else:
-            self.redirect_to(SIGNUP)
+        self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
+                    error_helper=ErrorHelper(None, None))
+        
 
-    def post(self, post_key):
+    def post(self, post_key, origin):
         '''Handles form submission of new comment.
         @param post_key: string id of a BlogPost entity supplied in the URI
+        @param origin: the leaf of the URI tree where this request originated
         '''
         helper = HandlerHelper(self, [CONTENT], post_key)
         helper.validate_form_input(COMMENT_TEMPLATE,
@@ -981,7 +1043,7 @@ class NewComment(Handler):
         if helper.is_data_valid:
             Comment.create_new_comment(helper.cur_user,
                                        post_key, helper.valid_data)
-            self.redirect_to(DISPLAY_POST, post_key)
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, origin))
 
 class EditComment(Handler):
     '''Handles requests to edit a comment.
@@ -992,31 +1054,31 @@ class EditComment(Handler):
         second item in the list.
     '''
 
-    POST_KEY = 0
-    COM_KEY = 1
 
-    def get(self, *key_list):
+    @Handler.check_is_author(COMMENT)
+    @Handler.check_logged_in
+    def get(self, post_key):
         '''Retrieves the content of a comment and renders it to a form for
         editing.
-        @param key_list: list of entity keys from url for post and comment
+        @param post_key: url-safe ndb entity key
         '''
-        helper = HandlerHelper(self, (), key_list[self.POST_KEY])
-        if helper.is_logged_in:
-            cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
-            self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
+        helper = HandlerHelper(self, (), post_key)
+        cur_comment = ndb.Key(urlsafe=self.request.get("comment_key")).get() 
+        self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
                         content=cur_comment.content)
-        else: self.redirect_to(SIGNUP)
 
-    def post(self, *key_list):
-        '''Handles submission of edited comment form. Validates data submitted and
-        updates the database.
-        @param key_list: list of entity keys from url for post and comment
+    @Handler.check_is_author(COMMENT)
+    @Handler.check_logged_in
+    def post(self, post_key):
+        '''Handles submission of edited comment form. Validates data submitted 
+        and updates the database.
+        @param post_key: url-safe ndb entity key
         '''
-        helper = HandlerHelper(self, [CONTENT], key_list[self.POST_KEY])
-        if helper.is_logged_in and helper.is_data_valid:
-            cur_comment = Comment.entity_from_uri(key_list[self.COM_KEY])
+        helper = HandlerHelper(self, [CONTENT], post_key)
+        if helper.is_data_valid:
+            cur_comment = Comment.entity_from_uri(self.request.get("comment_key"))
             Comment.update_comment(cur_comment, helper.valid_data)
-            self.redirect_to(DISPLAY_POST, key_list[self.POST_KEY])
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
         else:
             helper.validate_form_input(COMMENT_TEMPLATE,
                                        current_post=helper.cur_post)
@@ -1061,7 +1123,7 @@ class Login(Handler):
                                  user_entity.password)
             if pwd_helper.verify_password():
                 helper.login_user()
-                self.redirect(WELCOME)
+                self.redirect(self.uri_for(WELCOME))
             else:
                 helper.set_template_field(PASSWORD + ERROR,
                                           "Incorrect password.")
@@ -1079,7 +1141,7 @@ class Logout(Handler):
         '''Logs the user out and redirects to the signup page.
         '''
         CookieUtil.set_cookie(USER, "", self)
-        self.redirect_to(SIGNUP)
+        self.redirect(self.uri_for(SIGNUP, DISPLAY))
 
 
 class FormHelper(object):
@@ -1160,14 +1222,18 @@ class FormHelper(object):
 #                                (LOGOUT, Logout)], debug=True)
 app = webapp2.WSGIApplication([
     routes.PathPrefixRoute("/blog", [
-        webapp2.Route("/", BlogMainPage, HOME),
+        webapp2.Route("/display/<:\w+>", BlogMainPage, HOME),
+        webapp2.Route("/error/<:\w+-\w+|\w+>", BlogMainPage, HOME_ERROR),
         webapp2.Route("/new_post", NewPost, NEW_POST),
         routes.PathPrefixRoute("/post_id/<:\w+-\w+|\w+>", [
             webapp2.Route("/display/<:\w+>", BlogPostDisplay, DISPLAY_POST),
-            webapp2.Route("/comment", NewComment, NEW_COMMENT),
-            webapp2.Route("/comment/<:(\w+-\w+|\w+)>/edit", 
+            webapp2.Route("/comment/new/<:\w+>", NewComment, NEW_COMMENT),
+            webapp2.Route("/comment/edit", 
                           EditComment, EDIT_COMMENT),
             webapp2.Route("/edit", EditPost, EDIT_POST),
+            webapp2.Route("/delete", DeletePost, DELETE_POST),
+            webapp2.Route("/comment/delete", 
+                          DeleteComment, DELETE_COMMENT),
             webapp2.Route("/like_post/<:\w+>", LikePost, LIKE_POST)]),
         webapp2.Route("/user_welcome", Welcome, WELCOME),
         webapp2.Route("/login", Login, LOGIN),

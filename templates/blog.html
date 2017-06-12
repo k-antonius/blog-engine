@@ -2,26 +2,30 @@
 {% block content %}
 	{% for current_post in recent_blog_posts %}
 
-  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}/display">
+  <div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}/display/display_post">
     <b>{{current_post.post_subject}}</b></a> </div>
   <div>{{current_post.post_content}}</div>
   <br>
-  <div>
-    <form method="post">
-      <button name="like_post"
-       type="submit" value="like_post_{{current_post.key.urlsafe()}}">
-       {{error_helper.get_like_text(current_post.key.urlsafe())}}</button>
-       {{error_helper.get_error(current_post, "like_post_error")}}
-    </form>
-  </div>
-  <div>
-    <form method="post">
-      <button name="comment_post" type="submit"
-      value="comment_post_{{current_post.key.urlsafe()}}">
-        Comment</button>
-        {{error_helper.get_error(current_post, "comment_post_error")}}
+  <table>
+    <tr>
+    <td>
+      <form method="post" action="../post_id/{{current_post.key.urlsafe()}}/like_post/home">
+        <button name="like_post"
+         type="submit" value="{{current_post.key.urlsafe()}}">
+         {{error_helper.get_like_text(current_post.key.urlsafe())}}</button>
       </form>
-  </div>
+    </td>
+    <td>
+    <form method="get" action="./post_id/{{current_post.key.urlsafe()}}/comment/new/home">
+      <button name="make_new_comment" type="submit"
+      value="{{current_post.key.urlsafe()}}">
+        Comment</button>
+
+      </form>
+    </td>
+  </tr>
+  </table>
+  {{error_helper.get_error(current_post)}}
   <div>_________________________________</div>
   <br>
   {% endfor %}
