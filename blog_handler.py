@@ -143,9 +143,10 @@ class Handler(webapp2.RequestHandler):
             post_key = args[0]
             origin = args[1]
             helper = HandlerHelper(self, [], post_key)
-            if helper._is_cur_user_author():
+            if helper.is_cur_user_author(POST):
                 if origin == DISPLAY_POST:
-                    self.redirect(self.uri_for(DISPLAY_POST, post_key, OWN_POST))
+                    self.redirect(self.uri_for(DISPLAY_POST, post_key, 
+                                               OWN_POST))
                 elif origin == HOME:
                     self.redirect(self.uri_for(HOME_ERROR, post_key))
             else:
@@ -165,13 +166,29 @@ class Handler(webapp2.RequestHandler):
             def wrapper(self, *args, **kwargs):
                 post_key = args[0]
                 helper = HandlerHelper(self, [], post_key)
-                if not helper._is_cur_user_author():
+                if not helper.is_cur_user_author(entity_type):
                     self.redirect(self.uri_for(DISPLAY_POST, post_key, 
                                                NOT_AUTHOR + "_" + entity_type))
                 else:
                     handler_fun(self, *args, **kwargs)
             return wrapper
         return takes_function
+
+    @classmethod
+    def check_post_exists(cls, handler_fun):
+        '''If attempt to query database for blog post fails, raise a 404
+        error. Otherwise continue handler execution.
+        @return: BlogPost entity from key or raise a 404 error.
+        '''
+        @wraps(handler_fun)
+        def wrapper(self, *args, **kwargs):
+            post_key = args[0]
+            helper = HandlerHelper(self, [], post_key)
+            if helper.cur_post is not None:
+                return handler_fun(self, *args, **kwargs)
+            else:
+                return self.error(404)
+        return wrapper
 
 
 class HandlerHelper(object):
@@ -195,7 +212,7 @@ class HandlerHelper(object):
         self.handler = handler
         self.is_logged_in = self._logged_in()
         self.cur_user = self._logged_in_user()
-        self.cur_post = self._get_cur_post(post_id)
+        self.cur_post = self.get_cur_post(post_id)
         self.cur_comment = None
         self.data_error_msgs = None
         self.valid_data = {}
@@ -203,7 +220,7 @@ class HandlerHelper(object):
         self._validate_user_input(field_list)
         self.button_subj = None
         self.button_action = None
-        self.error_type = None
+        self.error_type = None 
 
     def set_template_field(self, key, value):
         '''Include text for rendering in html template in the valid data dict.
@@ -226,12 +243,16 @@ class HandlerHelper(object):
         '''
         return CookieUtil.get_cookie(USER, self.handler)
 
-    def _get_cur_post(self, key_from_url):
+    def get_cur_post(self, key_from_url):
         '''Returns a blog post ENTITY from url-safe string.
         @param key_from_url: the url-safe key string for a BlogPost
         '''
         if key_from_url:
-            return ndb.Key(urlsafe=key_from_url).get()
+            try:
+                return ndb.Key(urlsafe=key_from_url).get()
+            except:
+                return None
+            
 
     def _validate_user_input(self, field_list):
         '''Validate text input into html form using FormHelper class.
@@ -275,8 +296,15 @@ class HandlerHelper(object):
         else:
             return self.cur_post.post_author
 
-    def _is_cur_user_author(self):
-        return self.cur_user == self._find_author()
+    def is_cur_user_author(self, entity_type):
+        if entity_type == COMMENT:
+            comment = Comment.entity_from_uri(
+                      self.handler.request.get("comment_key"))
+            return comment.author == self.cur_user
+        elif entity_type == POST:
+            return self.cur_post.post_author == self.cur_user
+        else:
+            raise Exception("Entity type not 'post' or 'comment'")
 
     def detect_user_id_error(self):
         '''Returns boolean value based on whether an error condition exists.
@@ -284,12 +312,12 @@ class HandlerHelper(object):
         their own posts and comments.
         '''
         if self.button_action == LIKE:
-            return self._is_cur_user_author()
+            return self.is_cur_user_author()
         # users can comment on anyone's posts including their own
         elif self.button_action == COMMENT:
             return False
         else:
-            return not self._is_cur_user_author()
+            return not self.is_cur_user_author()
 
     def gen_error_msg(self):
         '''Generates an error message for button inputs.
@@ -430,7 +458,10 @@ class ErrorHelper(object):
         for post in recent_posts:
             post_url_key = post.key.urlsafe()
             button_helper = HandlerHelper(handler, [], post_url_key)
-            button_text_map[post_url_key] = button_helper.gen_like_text()
+            if button_helper.cur_post is None:
+                continue
+            else:
+                button_text_map[post_url_key] = button_helper.gen_like_text()
         self._like_text_map = button_text_map
 
     def get_like_text(self, current_post_key):
@@ -449,6 +480,7 @@ class LikePost(Handler):
     
     @Handler.check_not_author
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def post(self, post_key, origin):
         helper = HandlerHelper(self, [], post_key)
         BlogPost.add_like_unlike(helper.cur_post, helper.cur_user, 
@@ -536,7 +568,8 @@ class BlogPostDisplay(Handler):
     can choose to edit or delete the post, make a new comment, or edit and
     delete existing comments.
     '''
-
+    
+    @Handler.check_post_exists
     def get(self, post_key, error):
         '''Renders an individual blog post and all comments made on that post.
         @param post_key: the url key from the uri of for the post being viewed
@@ -650,6 +683,7 @@ class EditPost(Handler):
     
     @Handler.check_is_author(POST)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def get(self, post_key):
         '''Handles requests to display the edit post form.
         @param post_key: string id of a BlogPost entity supplied in the URI
@@ -660,6 +694,7 @@ class EditPost(Handler):
 
     @Handler.check_is_author(POST)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def post(self, post_key):
         '''Handles submission of edited post form. Validates form data and
         submits edited content to the database.
@@ -679,6 +714,7 @@ class DeletePost(Handler):
     
     @Handler.check_is_author(POST)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def post(self, post_key):
         BlogPost.delete_post(ndb.Key(urlsafe=post_key).get())
         self.redirect(self.uri_for(HOME, HOME))
@@ -689,6 +725,7 @@ class DeleteComment(Handler):
     
     @Handler.check_is_author(COMMENT)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def post(self, post_key):
         comment_key = self.request.get("comment_key")
         Comment.delete_comment(ndb.Key(urlsafe=comment_key).get())
@@ -732,6 +769,7 @@ class NewComment(Handler):
     '''
 
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def get(self, post_key, origin):
         '''Displays the form to add a new comment to a blog post. If a user
         attempts to visit this page without being logged in, they are directed
@@ -743,7 +781,7 @@ class NewComment(Handler):
         self.render(COMMENT_TEMPLATE, current_post=helper.cur_post,
                     error_helper=ErrorHelper(None, None))
         
-
+    @Handler.check_post_exists
     def post(self, post_key, origin):
         '''Handles form submission of new comment.
         @param post_key: string id of a BlogPost entity supplied in the URI
@@ -769,6 +807,7 @@ class EditComment(Handler):
 
     @Handler.check_is_author(COMMENT)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def get(self, post_key):
         '''Retrieves the content of a comment and renders it to a form for
         editing.
@@ -781,6 +820,7 @@ class EditComment(Handler):
 
     @Handler.check_is_author(COMMENT)
     @Handler.check_logged_in
+    @Handler.check_post_exists
     def post(self, post_key):
         '''Handles submission of edited comment form. Validates data submitted 
         and updates the database.

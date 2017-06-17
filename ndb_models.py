@@ -53,7 +53,10 @@ class User(ndb.Model):
         @return: the user entity or None if no such user exists
         '''
         if user_name:
-            return cls.get_by_id(user_name)
+            try:
+                return cls.get_by_id(user_name)
+            except:
+                return None
         else:
             return None
 
@@ -274,7 +277,10 @@ class Comment(ndb.Model):
         '''Returns the comment entity.
         @param comment_uri_key: the url safe key string
         '''
-        return ndb.Key(urlsafe=comment_uri_key).get()
+        try:
+            return ndb.Key(urlsafe=comment_uri_key).get()
+        except:
+            return None
 
     @classmethod
     def update_comment(cls, comment_entity, form_data):
