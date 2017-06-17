@@ -6,8 +6,6 @@
 <div>Author: {{current_post.post_author}}</div>
 <div>Post title: {{current_post.post_subject}}</div>
 <div>Post content: {{current_post.post_content}}</div>
-<div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}">
-  Back to blog post</a> </div>
 <div>_________________________________</div>
 
 <form method ="post">
@@ -15,5 +13,7 @@
 <textarea name="content">{{content}}</textarea>{{content_error}}<br>
 <input type="submit">
 </form>
+<div> <a href="/blog/post_id/{{current_post.key.urlsafe()}}/display/display_post">
+  Cancel</a></div>
 
 {% endblock %}
