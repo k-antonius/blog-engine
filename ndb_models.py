@@ -53,10 +53,7 @@ class User(ndb.Model):
         @return: the user entity or None if no such user exists
         '''
         if user_name:
-            try:
-                return cls.get_by_id(user_name)
-            except:
-                return None
+            return cls.get_by_id(user_name)
         else:
             return None
 

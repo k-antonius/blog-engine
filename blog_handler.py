@@ -752,8 +752,10 @@ class Signup(Handler):
         '''
         helper = HandlerHelper(self, (USER, PASSWORD, PWD_VERIFY, EMAIL))
         helper.validate_form_input(SIGNUP_TEMPLATE)
-
-        user_entity = User.already_exists(helper.valid_data.get(USER))
+        try:
+            user_entity = User.already_exists(helper.valid_data.get(USER))
+        except:
+            return self.error(404)
         if helper.is_data_valid and user_entity:
             helper.set_template_field(USER + ERROR, "User already exists. " +
                                       "Please choose another user name.")
@@ -869,7 +871,10 @@ class Login(Handler):
         '''
         helper = HandlerHelper(self, (USER, PASSWORD))
         helper.validate_form_input(LOGIN_TEMPLATE)
-        user_entity = User.already_exists(helper.valid_data.get(USER))
+        try:
+            user_entity = User.already_exists(helper.valid_data.get(USER))
+        except:
+            return self.error(404)
         if helper.valid_data and user_entity:
             pwd_helper = PwdUtil(helper.valid_data.get(PASSWORD),
                                  user_entity.password)
