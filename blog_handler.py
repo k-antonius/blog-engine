@@ -123,8 +123,7 @@ class Handler(webapp2.RequestHandler):
         
         @wraps(handler_fun)
         def wrapper(self, *args, **kwargs):
-            post_key = self.request.route_args[0]
-            helper = HandlerHelper(self, [], post_key)
+            helper = HandlerHelper(self, [])
             if not helper.is_logged_in:
                 self.redirect(self.uri_for(SIGNUP, ACCESS_ERROR))
             else:
@@ -540,20 +539,19 @@ class NewPost(Handler):
     '''Class to handle create of new blog posts.
     '''
 
+    @Handler.check_logged_in
     def get(self):
         '''Renders the new post form on an initial request.
         '''
-        helper = HandlerHelper(self, ())
-        if helper.is_logged_in:
-            self.render(NEW_POST_TEMPLATE)
-        else:
-            self.redirect_to(SIGNUP, "")
+        self.render(NEW_POST_TEMPLATE)
 
+
+    @Handler.check_logged_in    
     def post(self):
         '''Handles form submission of new blog post form.
         '''
         helper = HandlerHelper(self, (SUBJECT, CONTENT))
-        if helper.is_logged_in and helper.is_data_valid:
+        if helper.is_data_valid:
             new_post_key = BlogPost.create_new_post(helper.cur_user,
                                                     helper.valid_data)
             self.redirect(self.uri_for(DISPLAY_POST, new_post_key.urlsafe(),
