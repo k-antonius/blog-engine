@@ -54,8 +54,6 @@ class User(ndb.Model):
         '''
         if user_name:
             return cls.get_by_id(user_name)
-        else:
-            return None
 
     @classmethod
     def incr_posts_made(cls, user_name):
