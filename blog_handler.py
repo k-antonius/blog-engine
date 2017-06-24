@@ -361,8 +361,6 @@ class LikePost(Handler):
         BlogPost.add_like_unlike(helper.cur_post, helper.cur_user, 
                                  helper.gen_like_text())
         if origin == HOME:
-            # remove this in deployment
-            time.sleep(0.1)
             return self.redirect(self.uri_for(HOME, "update"))
         elif origin == DISPLAY_POST or origin == OWN_POST:
             self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
