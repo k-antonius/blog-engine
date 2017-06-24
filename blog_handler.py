@@ -32,7 +32,6 @@ JINJA = jinja2.Environment(loader=jinja2.FileSystemLoader(TEMPLATE_DIR),
                            extensions=['jinja2.ext.autoescape'],
                            autoescape=True)
 
-
 # HTML Filenames
 MAIN_PAGE_TEMPLATE = "blog.html"
 NEW_POST_TEMPLATE = "newpost.html"
@@ -42,7 +41,6 @@ SIGNUP_TEMPLATE = "signup_page.html"
 WELCOME_TEMPLATE = "welcome.html"
 LOGIN_TEMPLATE = "login_page.html"
 COMMENT_TEMPLATE = "new_comment.html"
-
 
 # URI Routes
 HOME = "home"
@@ -116,7 +114,7 @@ class Handler(webapp2.RequestHandler):
         @wraps(handler_fun)
         def wrapper(self, *args, **kwargs):
             helper = HandlerHelper(self, [])
-            if not helper.is_logged_in:
+            if not helper.is_logged_in():
                 self.redirect(self.uri_for(SIGNUP, ACCESS_ERROR))
             else:
                 handler_fun(self, *args, **kwargs)
@@ -188,20 +186,22 @@ class HandlerHelper(object):
     available for use in templates.
     Attributes:
         handler: the Webapp2 request handler
-        is_logged_in: boolean value, true if a login cookie is set
         cur_user: the str user name of a logged in user, if any
         cur_post: the blog post database object relevant to the current page
-        cur_comment: the comment database object relevant to the current page
         data_error_msgs: dict of error msgs generated from bad text form input
         valid_data: dict holding data to be rendered to a template
         is_data_valid: boolean, true if text input was valid
-        button_subj = the str subject of a POST request, a blog post, comment etc.
-        button_action = the str action type of a POST request, edit, delete etc.
     '''
 
     def __init__(self, handler, field_list, post_id=None):
+        '''
+        @param handler: the Webapp2 request handler
+        @param field_list: list of form input fields to verify, named by
+        global constants
+        @param post_id: the url-safe NDB key id of a post entity, used to 
+        retrieve the post entity upon initialization, if desired
+        '''
         self.handler = handler
-        self.is_logged_in = self._logged_in() # no need for this field
         self.cur_user = self._logged_in_user()
         self.cur_post = self.get_cur_post(post_id)
         self.data_error_msgs = None
@@ -216,14 +216,11 @@ class HandlerHelper(object):
         '''
         self.valid_data[key] = value
 
-    def _logged_in(self):
+    def is_logged_in(self):
         '''Returns true if a cookie is set for a logged in user.
         '''
-        # this if...else is necessary; get_cookie does not return a boolean
-        if CookieUtil.get_cookie(USER, self.handler):
-            return True
-        else:
-            return False
+        return CookieUtil.get_cookie(USER, self.handler) is not None
+            
 
     def _logged_in_user(self):
         '''Returns the str user name of user currently logged in.
@@ -537,7 +534,7 @@ class Signup(Handler):
         '''Handles requets to display the new user signup form.
         '''
         helper = HandlerHelper(self, ())
-        if helper.is_logged_in:
+        if helper.is_logged_in():
             self.redirect_to(WELCOME)
         else:
             self.render(SIGNUP_TEMPLATE)
@@ -642,7 +639,7 @@ class Welcome(Handler):
         '''Handles requests for the wecome page.
         '''
         helper = HandlerHelper(self, ())
-        if helper.is_logged_in:
+        if helper.is_logged_in():
             self.render(WELCOME_TEMPLATE, username=helper.cur_user)
         else:
             self.redirect(LOGIN)
@@ -656,7 +653,7 @@ class Login(Handler):
         '''Handles requests to display the login page.
         '''
         helper = HandlerHelper(self, ())
-        if helper.is_logged_in:
+        if helper.is_logged_in():
             self.redirect(WELCOME)
         else:
             self.render(LOGIN_TEMPLATE)
