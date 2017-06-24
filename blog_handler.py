@@ -68,24 +68,16 @@ EMAIL = "email"
 SUBJECT = "subject"
 CONTENT = "content"
 ERROR = "_error"
-EDIT = "edit"
 COMMENT = "comment"
 DELETE = "delete"
 POST = "post"
 LIKE = "like"
-LIKE_TEXT = "like_text"
 
 # URI status terminators
 ACCESS_ERROR = "access_error"
 OWN_POST = "own_post"
 NOT_AUTHOR = "not_author"
 DISPLAY = "display"
-
-
-
-# Button Names
-BUTTONS = ("edit_comment", "delete_comment", "edit_post",
-           "delete_post", "like_post", "comment_post")
 
 
 class Handler(webapp2.RequestHandler):
@@ -209,17 +201,13 @@ class HandlerHelper(object):
 
     def __init__(self, handler, field_list, post_id=None):
         self.handler = handler
-        self.is_logged_in = self._logged_in()
+        self.is_logged_in = self._logged_in() # no need for this field
         self.cur_user = self._logged_in_user()
         self.cur_post = self.get_cur_post(post_id)
-        self.cur_comment = None
         self.data_error_msgs = None
         self.valid_data = {}
         self.is_data_valid = False
         self._validate_user_input(field_list)
-        self.button_subj = None
-        self.button_action = None
-        self.error_type = None 
 
     def set_template_field(self, key, value):
         '''Include text for rendering in html template in the valid data dict.
@@ -251,7 +239,6 @@ class HandlerHelper(object):
                 return ndb.Key(urlsafe=key_from_url).get()
             except:
                 return None
-            
 
     def _validate_user_input(self, field_list):
         '''Validate text input into html form using FormHelper class.
@@ -287,14 +274,6 @@ class HandlerHelper(object):
             self.data_error_msgs.update(additional_elements)
             self.handler.render(template, **self.data_error_msgs)
 
-    def _find_author(self):
-        '''Gets the author of a post or comment.
-        '''
-        if self.button_subj == COMMENT:
-            return self.cur_comment.author
-        else:
-            return self.cur_post.post_author
-
     def is_cur_user_author(self, entity_type):
         if entity_type == COMMENT:
             comment = Comment.entity_from_uri(
@@ -305,100 +284,6 @@ class HandlerHelper(object):
         else:
             raise Exception("Entity type not 'post' or 'comment'")
 
-    def detect_user_id_error(self):
-        '''Returns boolean value based on whether an error condition exists.
-        Errors: Users cannot like own posts, users can only edit and delete
-        their own posts and comments.
-        '''
-        if self.button_action == LIKE:
-            return self.is_cur_user_author()
-        # users can comment on anyone's posts including their own
-        elif self.button_action == COMMENT:
-            return False
-        else:
-            return not self.is_cur_user_author()
-
-    def gen_error_msg(self):
-        '''Generates an error message for button inputs.
-        Args come from button value in POST request. This method should be
-        called after determining an error exists on a POST request from a
-        button form---it will generate error messages and store them in the
-        valid data dict for rendering to the template.
-        '''
-        base_template = "You {status} to {action} a {postORcomm}"
-        not_logged_in = "must be logged in"
-        not_own_post = "must be a {postORcomm}'s author"
-        like_own_post = "can't be a {postORcomm}'s author"
-
-        def _choose_error():
-            '''Selects the correct error message.
-            '''
-            if  not self.is_logged_in:
-                return not_logged_in
-            elif self.button_action == LIKE:
-                return like_own_post.format(postORcomm=self.button_subj)
-            else:
-                return not_own_post.format(postORcomm=self.button_subj)
-
-        def _choose_action():
-            '''Selects a str to match the current POST action
-            '''
-            if self.button_action == COMMENT:
-                return self.button_action + " on"
-            else:
-                return self.button_action
-
-        error_msg = base_template.format(status=_choose_error(),
-                                         action=_choose_action(),
-                                         postORcomm=self.button_subj)
-        self.error_type = self.button_action + "_" + self.button_subj + "_error"
-        self.set_template_field(self.error_type, error_msg)
-
-    def get_request_type(self):
-        '''Parses the value of a template button and set button_subj, button_action,
-        and cur_comment as well as cur_post class fields if necessary. This
-        method is useful when many buttons exist on a page relating to
-        many different entities in the database, or when multiple POST requests
-        come from the same page.
-        It is an error to call this method when no buttons matching the
-        declared global constants exist.
-        '''
-        get = self.handler.request.get
-        for name in BUTTONS:
-            if len(get(name)) > 0:  # is this button in the request?
-                post_value = get(name)
-                temp_list = post_value.split("_")
-                self.button_action = temp_list[0]
-                self.button_subj = temp_list[1]
-                if len(temp_list) > 2:  # if a post or comment url key in value
-                    key = ndb.Key(urlsafe=temp_list[2]).get()
-                    if self.button_subj == COMMENT:
-                        self.cur_comment = key
-                    elif self.button_action == LIKE:
-                        self.cur_post = key
-                    elif self.button_subj == POST:
-                        self.cur_post = key
-                break
-        assert (self.button_subj and self.button_action,
-                "POST values did not update.")
-
-    def update_like(self):
-        '''Updates the like of users who have liked the current post and the
-        text to render for a single post.
-        Assumes that the current user can like the current post and that a user
-        is logged in.
-        '''
-        cur_like_value = self.gen_like_text()
-        BlogPost.add_like_unlike(self.cur_post, self.cur_user, cur_like_value)
-
-        def _rev_like_value():
-            if cur_like_value == "Like":
-                return "Unlike"
-            else:
-                return "Like"
-
-        self.set_template_field(LIKE_TEXT, _rev_like_value())
-
     def gen_like_text(self):
         '''Returns string literal "like or "unlike" based on whether the
         current user has or hasn't liked the current post.
@@ -408,12 +293,6 @@ class HandlerHelper(object):
         else:
             return "Like"
 
-    def get_button_error(self):
-        '''Convenience method to return error type of an error associated with
-        a button error
-        @return: str error type or None
-        '''
-        return self.valid_data.get(self.error_type)
 
 class ErrorHelper(object):
     '''Stores error messages for individual database entities. Useful for
@@ -492,7 +371,6 @@ class LikePost(Handler):
             self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
 
 
-
 class BlogMainPage(Handler):
     '''Class to handle requests on the main page.
     '''
@@ -516,24 +394,6 @@ class BlogMainPage(Handler):
         self.render(MAIN_PAGE_TEMPLATE, recent_blog_posts=recent_posts,
                     error_helper=error_helper_inst)
 
-#     def post(self):
-#         '''Handles requests to like posts and initiate a comment on a post.
-#         '''
-#         helper = HandlerHelper(self, [])
-#         helper.get_request_type()
-#         if (not helper.is_logged_in) or helper.detect_user_id_error():
-#             helper.gen_error_msg()
-#             error_helper = ErrorHelper(helper.get_button_error(),
-#                                        helper.cur_post.key.urlsafe())
-#             self._render_main_page(error_helper)
-#         elif helper.button_action == LIKE:
-#             helper.update_like()
-#             error_helper = ErrorHelper(None, None)
-#             self._render_main_page(error_helper)
-#         else:
-#             self.redirect(self.uri_for(NEW_COMMENT, 
-#                                        helper.cur_post.key.urlsafe())) 
-
 
 class NewPost(Handler):
     '''Class to handle create of new blog posts.
@@ -544,7 +404,6 @@ class NewPost(Handler):
         '''Renders the new post form on an initial request.
         '''
         self.render(NEW_POST_TEMPLATE)
-
 
     @Handler.check_logged_in    
     def post(self):
@@ -612,67 +471,6 @@ class BlogPostDisplay(Handler):
     def parse_url_error(self, error_string):
         split_text = error_string.split("_")
         return split_text[2]
-
-#     def post(self, post_key):
-#         '''Handles requests to like/unlike a post, or edit/delete
-#         a post/comment, and make new comment.
-#         @param post_key: the url key from the uri of for the post being viewed
-#         '''
-#         helper = HandlerHelper(self, (), post_key)
-#         helper.get_request_type()
-# #         if (not helper.is_logged_in) or helper.detect_user_id_error():
-# # 
-# #             def _get_cur_action_key():
-# #                 '''Return the key of the current button request's subject.
-# #                 '''
-# #                 if helper.button_subj == COMMENT:
-# #                     return helper.cur_comment.key.urlsafe()
-# #                 else:
-# #                     return helper.cur_post.key.urlsafe()
-# # 
-# #             helper.gen_error_msg()
-# #             error_helper = ErrorHelper(helper.get_button_error(),
-# #                                        helper.error_type,
-# #                                        _get_cur_action_key())
-# #             self._render_post_template(helper, error_helper)
-# #         elif helper.button_action == LIKE:
-# #             helper.update_like()
-# #             self._render_post_template(helper, ErrorHelper(None, None, None))
-#         elif helper.button_action == DELETE:
-#             self._delete(helper)
-#             self.redirect_to(WELCOME) # re-direct to allow DB time to update.
-#         else:
-#             self.redirect(self._build_edit_route(helper))
-
-    def _build_edit_route(self, helper):
-        '''Builds a route for redirecting to the right URI on an edit
-        request.
-        @param helper: HandlerHelper instance
-        '''
-        pass
-#         post_route = POST_ID + helper.cur_post.key.urlsafe()
-#         if helper.button_action == COMMENT:
-#             return post_route + "/" + COMMENT
-#         else:
-#             base_template = post_route + "{prefix}/edit"
-#             if helper.button_subj == COMMENT:
-#                 return base_template.format(prefix="/comment/" +
-#                                             helper.cur_comment.key.urlsafe())
-#             else:
-#                 return base_template.format(prefix="")
-
-
-    def _delete(self, helper):
-        '''Determines whether a post or comment is to be deleted and calls
-        the appropriate function.
-        @param helper: HandlerHelper instance
-        '''
-        assert (helper.button_subj == COMMENT or helper.button_subj == POST,
-                "wrong string passed; was:" + helper.button_subj)
-        if helper.button_subj == COMMENT:
-            Comment.delete_comment(helper.cur_comment)
-        else:
-            BlogPost.delete_post(helper.cur_post)
 
 
 class EditPost(Handler):
@@ -803,7 +601,6 @@ class EditComment(Handler):
         COM_KEY: same thing but with a comment entity child, always
         second item in the list.
     '''
-
 
     @Handler.check_is_author(COMMENT)
     @Handler.check_logged_in
@@ -964,17 +761,7 @@ class FormHelper(object):
                 to_render[input_name] = self._handler.request.get(input_name)
         return to_render
 
-# register page handlers
-# app = webapp2.WSGIApplication([(HOME, BlogMainPage),
-#                                (NEW_POST, NewPost),
-#                                (POST_DISPLAY, BlogPostDisplay),
-#                                (NEW_COMMENT, NewComment),
-#                                (EDIT_COMMENT, EditComment),
-#                                (EDIT_POST, EditPost),
-#                                (SIGN_UP, Signup),
-#                                (WELCOME, Welcome),
-#                                (LOGIN, Login),
-#                                (LOGOUT, Logout)], debug=True)
+
 app = webapp2.WSGIApplication([
     routes.PathPrefixRoute("/blog", [
         webapp2.Route("/display/<:\w+>", BlogMainPage, HOME),
@@ -996,6 +783,3 @@ app = webapp2.WSGIApplication([
         webapp2.Route("/signup/<:\w+>", Signup, SIGNUP)
     ])
 ])
-
-
-

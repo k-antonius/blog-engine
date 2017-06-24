@@ -71,15 +71,6 @@ class User(ndb.Model):
         user.put()
         return user.posts_made
 
-#     @classmethod
-#     def get_num_posts(cls, user_name):
-#         '''Given the key id of this user, returns the number of posts this user
-#         has made.
-#         '''
-#         user_key = ndb.Key("User", user_name)
-#         user = user_key.get()
-#         return user.posts_made
-
     @classmethod
     def _secure_password(cls, clear_text):
         '''Hash and salt password for storing in database.
