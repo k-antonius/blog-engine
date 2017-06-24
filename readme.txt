@@ -14,7 +14,7 @@ to add front end code.
 Installation instructions:
 
 A. To view the project running live:
-  A demo is running at 'https://udacity-blog-167512.appspot.com/blog'. Please
+  A demo is running at 'https://udacity-blog-167512.appspot.com/blog/display/home'. Please
   follow the link to test the app.
 
 B. To develop or run the project locally:
