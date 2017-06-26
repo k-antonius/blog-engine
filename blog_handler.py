@@ -519,8 +519,13 @@ class DeleteComment(Handler):
     @Handler.check_post_exists
     def post(self, post_key):
         comment_key = self.request.get("comment_key")
-        Comment.delete_comment(ndb.Key(urlsafe=comment_key).get())
-        self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
+        comment_to_delete = ndb.Key(urlsafe=comment_key).get()
+        if comment_to_delete is not None:
+            Comment.delete_comment(comment_to_delete)
+            self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
+        else:
+            return self.error(404)
+        
 
 
 class Signup(Handler):
@@ -621,7 +626,10 @@ class EditComment(Handler):
         helper = HandlerHelper(self, [CONTENT], post_key)
         if helper.is_data_valid:
             cur_comment = Comment.entity_from_uri(self.request.get("comment_key"))
-            Comment.update_comment(cur_comment, helper.valid_data)
+            if cur_comment is not None:
+                Comment.update_comment(cur_comment, helper.valid_data)
+            else:
+                return self.error(404)
             self.redirect(self.uri_for(DISPLAY_POST, post_key, DISPLAY_POST))
         else:
             helper.validate_form_input(COMMENT_TEMPLATE,
